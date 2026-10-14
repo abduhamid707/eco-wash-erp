@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+const base='http://localhost:4000';
+let token='';
+async function api(path,method='GET',data){
+ const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:data?JSON.stringify(data):undefined});
+ const payload=await r.json();
+ if(!r.ok)throw new Error(path+' '+r.status+' '+JSON.stringify(payload));
+ return payload;
+}
+const login=await api('/auth/login','POST',{login:'ci-admin',password:'ci-only-testing-password'});
+assert.ok(login.token);
+token=login.token;
+const product=await api('/products','POST',{sku:'ECO-CI-900',name:'Eco Wash test',unit:'qop',isRaw:false});
+const dealer=await api('/dealers','POST',{name:'Samarqand CI',region:'Samarqand'});
+const account=await api('/accounts','POST',{name:'Test kassa'});
+const when=new Date().toISOString();
+const uuid=()=>crypto.randomUUID();
+const receipt={type:'STOCK_RECEIPT',productId:product.id,quantity:'10',occurredAt:when};
+const key=uuid();
+const first=await api('/operations','POST',{idempotencyKey:key,command:receipt});
+const again=await api('/operations','POST',{idempotencyKey:key,command:receipt});
+assert.equal(first.id,again.id,'Idempotency must reuse original operation');
+const cash=await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'CASH_RECEIPT',accountId:account.id,amount:'1000',occurredAt:when}});
+assert.ok(cash.id);
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'SHIPMENT',dealerId:dealer.id,productId:product.id,quantity:'3',unitPrice:'100',occurredAt:when}});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'DEALER_PAYMENT',dealerId:dealer.id,accountId:account.id,amount:'200',occurredAt:when}});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'EXPENSE',accountId:account.id,amount:'50',category:'Transport',occurredAt:when}});
+const snapshot=await api('/dashboard');
+assert.equal(snapshot.products.find(x=>x.id===product.id).stock,'7');
+assert.equal(snapshot.dealers.find(x=>x.id===dealer.id).receivable,'100');
+assert.equal(snapshot.accounts.find(x=>x.id===account.id).balance,'1150');
+const recipes=await api('/recipes'); assert.ok(Array.isArray(recipes));
+const report=await fetch(base+'/reports/export.xlsx',{headers:{Authorization:'Bearer '+token}});
+assert.equal(report.status,200);
+assert.ok(Number(report.headers.get('content-length')||0)>0 || (await report.arrayBuffer()).byteLength>100);
+console.log('PASS: login, stock, debt, payment, expense, idempotency, report');

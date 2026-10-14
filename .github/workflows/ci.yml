@@ -4,8 +4,27 @@ on:
     branches: [main]
   pull_request:
 jobs:
-  build:
+  build-and-smoke:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: eco_wash
+          POSTGRES_USER: eco
+          POSTGRES_PASSWORD: test_only_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U eco -d eco_wash"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://eco:test_only_password@localhost:5432/eco_wash?schema=public
+      JWT_SECRET: test_secret_value_is_more_than_thirty_two_characters_long
+      BOOTSTRAP_LOGIN: ci-admin
+      BOOTSTRAP_PASSWORD: ci-only-testing-password
+      WEB_ORIGIN: http://localhost:5173
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -17,3 +36,10 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm --filter @eco/api db:generate
       - run: pnpm build
+      - run: pnpm --filter @eco/api exec prisma db push --skip-generate
+      - run: pnpm --filter @eco/api bootstrap
+      - name: Integration smoke test
+        run: |
+          pnpm --filter @eco/api start > /tmp/eco-api.log 2>&1 &
+          for i in $(seq 1 40); do curl -fsS http://localhost:4000/health >/dev/null && break || sleep 1; done
+          node tests/smoke.mjs
