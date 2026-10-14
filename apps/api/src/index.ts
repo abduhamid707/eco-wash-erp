@@ -36,6 +36,7 @@ const quantity = z.string().regex(/^\d{1,15}(\.\d{1,4})?$/).refine(s => new Pris
 const date = z.string().datetime({ offset: true });
 const cmd = z.discriminatedUnion('type', [
  z.object({ type: z.literal('STOCK_RECEIPT'), productId: id, quantity, unitCost: amount.optional(), occurredAt: date }),
+ z.object({ type: z.literal('PRODUCTION'), recipeId: id, batches: quantity, occurredAt: date }),
  z.object({ type: z.literal('SHIPMENT'), dealerId: id, productId: id, quantity, unitPrice: amount, occurredAt: date }),
  z.object({ type: z.literal('DEALER_PAYMENT'), dealerId: id, accountId: id, amount, occurredAt: date }),
  z.object({ type: z.literal('EXPENSE'), accountId: id, amount, category: z.string().min(2).max(100), description: z.string().max(500).default(''), occurredAt: date }),
@@ -98,6 +99,17 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    await tx.moneyEntry.create({data:{operationId:result.id,accountId,amount:delta}});
   };
   if(c.type==='STOCK_RECEIPT') await stock(c.productId,dec(c.quantity),c.unitCost);
+  if(c.type==='PRODUCTION'){
+   const recipe=await tx.recipe.findUnique({where:{id:c.recipeId},include:{ingredients:true,product:true}});
+   if(!recipe||!recipe.active) insufficient('RECIPE_NOT_FOUND');
+   if(recipe.product.isRaw) insufficient('RECIPE_OUTPUT_MUST_BE_FINISHED_PRODUCT');
+   const multiplier=dec(c.batches);
+   for(const line of recipe.ingredients){
+    if(line.materialId===recipe.productId) insufficient('RECIPE_SELF_CONSUMPTION');
+    await stock(line.materialId,line.quantity.mul(multiplier).neg());
+   }
+   await stock(recipe.productId,recipe.outputQuantity.mul(multiplier));
+  }
   if(c.type==='SHIPMENT'){
    const dealer=await tx.dealer.findUnique({where:{id:c.dealerId}});
    if(!dealer) throw new Error('DEALER_NOT_FOUND');
@@ -133,6 +145,29 @@ app.get('/dashboard', { preHandler: gate(allRoles) }, async()=>{
   prisma.operation.count()
  ]);
  return {products:products.map(x=>({...x,stock:x.stock.toString()})),dealers:dealers.map(x=>({...x,receivable:x.receivable.toString()})),accounts:accounts.map(x=>({...x,balance:x.balance.toString()})),operationCount:operations};
+});
+
+
+app.get('/recipes', {preHandler:gate(allRoles)}, async()=>{
+ const records=await prisma.recipe.findMany({include:{product:{select:{name:true}},ingredients:{include:{material:{select:{name:true}}}}},orderBy:{createdAt:'desc'}});
+ return records.map(r=>({id:r.id,productId:r.productId,productName:r.product.name,version:r.version,outputQuantity:r.outputQuantity.toString(),active:r.active,ingredients:r.ingredients.map(x=>({materialId:x.materialId,materialName:x.material.name,quantity:x.quantity.toString()}))}));
+});
+app.post('/recipes', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const b=z.object({productId:id,outputQuantity:quantity,ingredients:z.array(z.object({materialId:id,quantity})).min(1).max(100)}).parse(req.body);
+ if(new Set(b.ingredients.map(x=>x.materialId)).size!==b.ingredients.length) return reply.code(400).send({error:'DUPLICATE_RECIPE_INGREDIENT'});
+ const recipe=await prisma.$transaction(async tx=>{
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773302)`;
+  const product=await tx.product.findUnique({where:{id:b.productId}});
+  if(!product||product.isRaw||!product.active) insufficient('OUTPUT_PRODUCT_INVALID');
+  const materials=await tx.product.findMany({where:{id:{in:b.ingredients.map(x=>x.materialId)},isRaw:true,active:true}});
+  if(materials.length!==b.ingredients.length) insufficient('RECIPE_MATERIAL_INVALID');
+  const last=await tx.recipe.findFirst({where:{productId:b.productId},orderBy:{version:'desc'}});
+  await tx.recipe.updateMany({where:{productId:b.productId,active:true},data:{active:false}});
+  const record=await tx.recipe.create({data:{productId:b.productId,outputQuantity:dec(b.outputQuantity),version:(last?.version??0)+1,ingredients:{create:b.ingredients.map(x=>({materialId:x.materialId,quantity:dec(x.quantity)}))}}});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'CREATE_VERSION',entityType:'Recipe',entityId:record.id}});
+  return record;
+ });
+ return reply.code(201).send({id:recipe.id,version:recipe.version});
 });
 
 app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{

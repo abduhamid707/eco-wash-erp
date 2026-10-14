@@ -34,6 +34,8 @@ model Product {
  active Boolean @default(true)
  stock Decimal @default(0) @db.Decimal(20,4)
  movements InventoryMovement[]
+ recipes Recipe[]
+ recipeIngredients RecipeIngredient[]
 }
 model Dealer {
  id String @id @default(uuid())
@@ -97,4 +99,25 @@ model AuditLog {
  after Json?
  createdAt DateTime @default(now())
  @@index([entityType,entityId])
+}
+
+model Recipe {
+ id String @id @default(uuid())
+ productId String
+ product Product @relation(fields:[productId],references:[id])
+ version Int
+ outputQuantity Decimal @db.Decimal(20,4)
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ ingredients RecipeIngredient[]
+ @@unique([productId,version])
+}
+model RecipeIngredient {
+ id String @id @default(uuid())
+ recipeId String
+ recipe Recipe @relation(fields:[recipeId],references:[id])
+ materialId String
+ material Product @relation(fields:[materialId],references:[id])
+ quantity Decimal @db.Decimal(20,4)
+ @@unique([recipeId,materialId])
 }
