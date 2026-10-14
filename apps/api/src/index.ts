@@ -101,7 +101,8 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   if(c.type==='STOCK_RECEIPT') await stock(c.productId,dec(c.quantity),c.unitCost);
   if(c.type==='PRODUCTION'){
    const recipe=await tx.recipe.findUnique({where:{id:c.recipeId},include:{ingredients:true,product:true}});
-   if(!recipe||!recipe.active) insufficient('RECIPE_NOT_FOUND');
+   if(!recipe) throw new Error('RECIPE_NOT_FOUND');
+   if(!recipe.active) insufficient('RECIPE_INACTIVE');
    if(recipe.product.isRaw) insufficient('RECIPE_OUTPUT_MUST_BE_FINISHED_PRODUCT');
    const multiplier=dec(c.batches);
    for(const line of recipe.ingredients){
@@ -216,7 +217,8 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
   const prior=await tx.payrollPayment.findUnique({where:{idempotencyKey:b.idempotencyKey}});
   if(prior){if(prior.requestHash!==hash) insufficient('IDEMPOTENCY_KEY_REUSED');return prior;}
   const employee=await tx.employee.findUnique({where:{id:b.employeeId}});
-  if(!employee?.active) insufficient('EMPLOYEE_NOT_FOUND');
+  if(!employee) throw new Error('EMPLOYEE_NOT_FOUND');
+  if(!employee.active) insufficient('EMPLOYEE_INACTIVE');
   const payments=await tx.payrollPayment.aggregate({where:{employeeId:b.employeeId,month:b.month},_sum:{amount:true}});
   const already=payments._sum.amount??dec('0');
   if(already.add(b.amount).gt(employee.monthlySalary)) insufficient('SALARY_EXCEEDED');
