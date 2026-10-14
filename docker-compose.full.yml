@@ -1,0 +1,41 @@
+# DEVELOPMENT/BETA ONLY. Uses Prisma db push, not production migrations.
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eco_wash
+      POSTGRES_USER: eco
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+      - eco_wash_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eco -d eco_wash"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://eco:${POSTGRES_PASSWORD}@db:5432/eco_wash?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (32+ chars) in .env}
+      WEB_ORIGIN: http://localhost:8080
+      PORT: 4000
+    command: ["sh","-c","pnpm --filter @eco/api exec prisma db push --skip-generate && pnpm --filter @eco/api start"]
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    depends_on:
+      - api
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:80"
+volumes:
+  eco_wash_pg:
