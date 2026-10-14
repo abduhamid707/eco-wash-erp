@@ -35,6 +35,7 @@ const amount = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/).refine(s => new Prisma
 const quantity = z.string().regex(/^\d{1,15}(\.\d{1,4})?$/).refine(s => new Prisma.Decimal(s).gt(0));
 const date = z.string().datetime({ offset: true });
 const cmd = z.discriminatedUnion('type', [
+ z.object({ type:z.literal('INVENTORY_ADJUSTMENT'),productId:id,actualQuantity:z.string().regex(/^\d{1,15}(\.\d{1,4})?$/),reason:z.string().min(8).max(500),occurredAt:date }),
  z.object({ type: z.literal('VOID_OPERATION'), targetId:id, occurredAt:date }),
  z.object({ type: z.literal('DEALER_RETURN'), shipmentId:id, quantity, occurredAt:date }),
  z.object({ type: z.literal('SUPPLIER_RECEIPT'), supplierId:id, productId:id, quantity, unitCost:amount, occurredAt:date }),
@@ -85,7 +86,7 @@ app.post('/accounts', { preHandler: gate(['OWNER']) }, async(req,reply)=>{
 });
 app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, async (req,reply) => {
  const b=commandBody.parse(req.body);
- if(['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING'].includes(b.command.type) && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
+ if(['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING','INVENTORY_ADJUSTMENT'].includes(b.command.type) && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
  if (req.session!.role==='WAREHOUSE' && !['STOCK_RECEIPT','SUPPLIER_RECEIPT'].includes(b.command.type)) return reply.code(403).send({error:'FORBIDDEN'});
  const hash=createHash('sha256').update(JSON.stringify(b.command)).digest('hex');
  // Serializability plus a transaction-level advisory lock serialize financial postings across API replicas.
@@ -130,6 +131,13 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    await tx.supplierEntry.create({data:{supplierId,operationId:result.id,amount:delta}});
   };
   
+  if(c.type==='INVENTORY_ADJUSTMENT'){
+   const current=await tx.product.findUnique({where:{id:c.productId}});
+   if(!current||!current.active) insufficient('PRODUCT_NOT_FOUND');
+   const difference=dec(c.actualQuantity).sub(current.stock);
+   if(difference.isZero()) insufficient('NO_INVENTORY_DIFFERENCE');
+   await stock(c.productId,difference);
+  }
   if(c.type==='DEALER_RETURN'){
    const shipment=await tx.operation.findUnique({where:{id:c.shipmentId}});
    if(!shipment) throw new Error('ORIGINAL_SHIPMENT_NOT_FOUND');
