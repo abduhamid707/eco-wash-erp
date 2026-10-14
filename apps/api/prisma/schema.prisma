@@ -121,3 +121,38 @@ model RecipeIngredient {
  quantity Decimal @db.Decimal(20,4)
  @@unique([recipeId,materialId])
 }
+
+model Employee {
+ id String @id @default(uuid())
+ name String
+ position String?
+ monthlySalary Decimal @db.Decimal(20,2)
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ attendance Attendance[]
+ payroll PayrollPayment[]
+}
+model Attendance {
+ id String @id @default(uuid())
+ employeeId String
+ employee Employee @relation(fields:[employeeId],references:[id])
+ date DateTime @db.Date
+ worked Boolean @default(true)
+ note String?
+ createdAt DateTime @default(now())
+ @@unique([employeeId,date])
+}
+model PayrollPayment {
+ id String @id @default(uuid())
+ idempotencyKey String @unique
+ requestHash String
+ employeeId String
+ employee Employee @relation(fields:[employeeId],references:[id])
+ month String
+ type String
+ amount Decimal @db.Decimal(20,2)
+ accountId String
+ operationId String @unique
+ createdAt DateTime @default(now())
+ @@index([employeeId,month])
+}

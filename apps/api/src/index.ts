@@ -170,6 +170,68 @@ app.post('/recipes', {preHandler:gate(financeRoles)}, async(req,reply)=>{
  return reply.code(201).send({id:recipe.id,version:recipe.version});
 });
 
+
+app.get('/employees', {preHandler:gate(allRoles)}, async()=>{
+ const staff=await prisma.employee.findMany({orderBy:{name:'asc'},include:{attendance:true,payroll:true}});
+ return staff.map(s=>({id:s.id,name:s.name,position:s.position,monthlySalary:s.monthlySalary.toString(),active:s.active,attendanceCount:s.attendance.length}));
+});
+app.post('/employees', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const b=z.object({name:z.string().min(2),position:z.string().max(80).optional(),monthlySalary:amount}).parse(req.body);
+ const record=await prisma.employee.create({data:{name:b.name,position:b.position,monthlySalary:dec(b.monthlySalary)}});
+ await prisma.auditLog.create({data:{actorId:req.session!.id,action:'CREATE',entityType:'Employee',entityId:record.id}});
+ return reply.code(201).send({id:record.id});
+});
+app.get('/attendance', {preHandler:gate(allRoles)}, async(req)=>{
+ const q=z.object({month:z.string().regex(/^\d{4}-\d{2}$/)}).parse(req.query);
+ const start=new Date(q.month+'-01T00:00:00.000Z');
+ const end=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth()+1,1));
+ return prisma.attendance.findMany({where:{date:{gte:start,lt:end}},include:{employee:{select:{name:true}}},orderBy:{date:'desc'}});
+});
+app.post('/attendance', {preHandler:gate(['OWNER','MANAGER','ATTENDANCE'])}, async(req,reply)=>{
+ const b=z.object({employeeId:id,date:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),worked:z.boolean(),note:z.string().max(250).optional()}).parse(req.body);
+ const dateValue=new Date(b.date+'T00:00:00.000Z');
+ if(Number.isNaN(dateValue.getTime())||dateValue.toISOString().slice(0,10)!==b.date) return reply.code(400).send({error:'INVALID_DATE'});
+ const person=await prisma.employee.findUnique({where:{id:b.employeeId}});
+ if(!person?.active)return reply.code(409).send({error:'EMPLOYEE_NOT_ACTIVE'});
+ const row=await prisma.$transaction(async tx=>{
+  const saved=await tx.attendance.upsert({where:{employeeId_date:{employeeId:b.employeeId,date:dateValue}},update:{worked:b.worked,note:b.note},create:{employeeId:b.employeeId,date:dateValue,worked:b.worked,note:b.note}});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'ATTENDANCE_SET',entityType:'Attendance',entityId:saved.id,after:{worked:b.worked,date:b.date}}});
+  return saved;
+ });
+ return reply.code(201).send({id:row.id,worked:row.worked});
+});
+app.get('/payroll', {preHandler:gate(financeRoles)}, async(req)=>{
+ const q=z.object({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/)}).parse(req.query);
+ const people=await prisma.employee.findMany({where:{active:true},include:{payroll:{where:{month:q.month}}},orderBy:{name:'asc'}});
+ return people.map(p=>{
+  const paid=p.payroll.reduce((s,pay)=>s.add(pay.amount),dec('0'));
+  return {id:p.id,name:p.name,monthlySalary:p.monthlySalary.toString(),paid:paid.toString(),remaining:p.monthlySalary.sub(paid).toString()};
+ });
+});
+app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const b=z.object({idempotencyKey:id,employeeId:id,accountId:id,month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),type:z.enum(['ADVANCE','SALARY']),amount}).parse(req.body);
+ const hash=createHash('sha256').update(JSON.stringify({...b,idempotencyKey:undefined})).digest('hex');
+ const response=await prisma.$transaction(async tx=>{
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773303)`;
+  const prior=await tx.payrollPayment.findUnique({where:{idempotencyKey:b.idempotencyKey}});
+  if(prior){if(prior.requestHash!==hash) insufficient('IDEMPOTENCY_KEY_REUSED');return prior;}
+  const employee=await tx.employee.findUnique({where:{id:b.employeeId}});
+  if(!employee?.active) insufficient('EMPLOYEE_NOT_FOUND');
+  const payments=await tx.payrollPayment.aggregate({where:{employeeId:b.employeeId,month:b.month},_sum:{amount:true}});
+  const already=payments._sum.amount??dec('0');
+  if(already.add(b.amount).gt(employee.monthlySalary)) insufficient('SALARY_EXCEEDED');
+  const account=await tx.moneyAccount.findUnique({where:{id:b.accountId}});
+  if(!account||account.balance.lt(b.amount)) insufficient('INSUFFICIENT_FUNDS');
+  const op=await tx.operation.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,type:'PAYROLL_'+b.type,occurredAt:new Date(),createdById:req.session!.id,metadata:{employeeId:b.employeeId,month:b.month,amount:b.amount}}});
+  await tx.moneyAccount.update({where:{id:b.accountId},data:{balance:{decrement:dec(b.amount)}}});
+  await tx.moneyEntry.create({data:{operationId:op.id,accountId:b.accountId,amount:dec(b.amount).neg()}});
+  const payment=await tx.payrollPayment.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,employeeId:b.employeeId,accountId:b.accountId,month:b.month,amount:dec(b.amount),type:b.type,operationId:op.id}});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'PAYROLL_PAYMENT',entityType:'PayrollPayment',entityId:payment.id}});
+  return payment;
+ },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:15000});
+ return reply.code(201).send({id:response.id});
+});
+
 app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{
  const [products,dealers,accounts,ops]=await Promise.all([
   prisma.product.findMany({orderBy:{name:'asc'}}),
