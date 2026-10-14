@@ -66,3 +66,7 @@ const afterPayroll=await api('/dashboard');
 assert.equal(afterPayroll.accounts.find(x=>x.id===account.id).balance,'1090');
 console.log('PASS: supplier credit, recipe, production, return, reversal, attendance, payroll');
 
+
+const reconciliation=await api('/audit/reconciliation');
+assert.equal(reconciliation.ok,true,'All balances must reconcile against transaction ledger');
+console.log('PASS: financial reconciliation');

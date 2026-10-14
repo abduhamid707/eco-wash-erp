@@ -85,7 +85,7 @@ app.post('/accounts', { preHandler: gate(['OWNER']) }, async(req,reply)=>{
 });
 app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, async (req,reply) => {
  const b=commandBody.parse(req.body);
- if(b.command.type==='VOID_OPERATION' && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
+ if(['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING'].includes(b.command.type) && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
  if (req.session!.role==='WAREHOUSE' && !['STOCK_RECEIPT','SUPPLIER_RECEIPT'].includes(b.command.type)) return reply.code(403).send({error:'FORBIDDEN'});
  const hash=createHash('sha256').update(JSON.stringify(b.command)).digest('hex');
  // Serializability plus a transaction-level advisory lock serialize financial postings across API replicas.
@@ -158,8 +158,16 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    await tx.operation.update({where:{id:result.id},data:{reversalOfId:original.id}});
   }
 
-  if(c.type==='DEALER_OPENING') await dealerChange(c.dealerId,dec(c.amount));
-  if(c.type==='SUPPLIER_OPENING') await supplierChange(c.supplierId,dec(c.amount));
+  if(c.type==='DEALER_OPENING'){
+   const old=await tx.operation.findFirst({where:{dealerId:c.dealerId,type:'DEALER_OPENING',status:'POSTED',id:{not:result.id}}});
+   if(old) insufficient('OPENING_ALREADY_ENTERED');
+   await dealerChange(c.dealerId,dec(c.amount));
+  }
+  if(c.type==='SUPPLIER_OPENING'){
+   const old=await tx.operation.findFirst({where:{supplierId:c.supplierId,type:'SUPPLIER_OPENING',status:'POSTED',id:{not:result.id}}});
+   if(old) insufficient('OPENING_ALREADY_ENTERED');
+   await supplierChange(c.supplierId,dec(c.amount));
+  }
   if(c.type==='SUPPLIER_RECEIPT'){await stock(c.productId,dec(c.quantity),c.unitCost);await supplierChange(c.supplierId,dec(c.quantity).mul(c.unitCost));}
   if(c.type==='SUPPLIER_PAYMENT'){await supplierChange(c.supplierId,dec(c.amount).neg());await changeAccount(c.accountId,dec(c.amount).neg());}
   if(c.type==='STOCK_RECEIPT') await stock(c.productId,dec(c.quantity),c.unitCost);
@@ -296,6 +304,29 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
   return payment;
  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:15000});
  return reply.code(201).send({id:response.id});
+});
+
+
+app.get('/audit/reconciliation', {preHandler:gate(['OWNER'])}, async()=>{
+ const [products,dealers,suppliers,accounts,stockEntries,dealerEntries,supplierEntries,moneyEntries]=await Promise.all([
+  prisma.product.findMany({select:{id:true,name:true,stock:true}}),
+  prisma.dealer.findMany({select:{id:true,name:true,receivable:true}}),
+  prisma.supplier.findMany({select:{id:true,name:true,payable:true}}),
+  prisma.moneyAccount.findMany({select:{id:true,name:true,balance:true}}),
+  prisma.inventoryMovement.groupBy({by:['productId'],_sum:{quantity:true}}),
+  prisma.dealerEntry.groupBy({by:['dealerId'],_sum:{amount:true}}),
+  prisma.supplierEntry.groupBy({by:['supplierId'],_sum:{amount:true}}),
+  prisma.moneyEntry.groupBy({by:['accountId'],_sum:{amount:true}})
+ ]);
+ const errors:Array<{category:string;id:string;name:string;stored:string;computed:string}>=[];
+ const check=(category:string,items:Array<{id:string;name:string;balance:Prisma.Decimal}>,totals:Map<string,Prisma.Decimal>)=>{
+  for(const item of items){const computed=totals.get(item.id)??dec('0');if(!item.balance.eq(computed))errors.push({category,id:item.id,name:item.name,stored:item.balance.toString(),computed:computed.toString()});}
+ };
+ check('inventory',products.map(x=>({id:x.id,name:x.name,balance:x.stock})),new Map(stockEntries.map(x=>[x.productId,x._sum.quantity??dec('0')])));
+ check('dealer',dealers.map(x=>({id:x.id,name:x.name,balance:x.receivable})),new Map(dealerEntries.map(x=>[x.dealerId,x._sum.amount??dec('0')])));
+ check('supplier',suppliers.map(x=>({id:x.id,name:x.name,balance:x.payable})),new Map(supplierEntries.map(x=>[x.supplierId,x._sum.amount??dec('0')])));
+ check('account',accounts.map(x=>({id:x.id,name:x.name,balance:x.balance})),new Map(moneyEntries.map(x=>[x.accountId,x._sum.amount??dec('0')])));
+ return {ok:errors.length===0,checked:{products:products.length,dealers:dealers.length,suppliers:suppliers.length,accounts:accounts.length},errors};
 });
 
 app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{
