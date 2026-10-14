@@ -1,106 +1,87 @@
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-enum UserRole {
-  OWNER
-  MANAGER
-  ATTENDANCE
-  WAREHOUSE
-}
-
-enum OperationStatus {
-  POSTED
-  REVERSED
-}
-
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+enum UserRole { OWNER MANAGER ATTENDANCE WAREHOUSE }
+enum OperationStatus { POSTED REVERSED }
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  login     String   @unique
-  passwordHash String
-  role      UserRole
-  createdAt DateTime @default(now())
-  operations Operation[]
+ id String @id @default(uuid())
+ name String
+ login String @unique
+ passwordHash String
+ role UserRole
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ operations Operation[]
 }
-
 model Product {
-  id        String  @id @default(uuid())
-  sku       String  @unique
-  name      String
-  unit      String
-  isRaw     Boolean @default(false)
-  active    Boolean @default(true)
-  movements InventoryMovement[]
+ id String @id @default(uuid())
+ sku String @unique
+ name String
+ unit String
+ isRaw Boolean @default(false)
+ active Boolean @default(true)
+ stock Decimal @default(0) @db.Decimal(20,4)
+ movements InventoryMovement[]
 }
-
 model Dealer {
-  id      String @id @default(uuid())
-  name    String
-  region  String
-  active  Boolean @default(true)
-  operations Operation[]
+ id String @id @default(uuid())
+ name String
+ region String
+ active Boolean @default(true)
+ receivable Decimal @default(0) @db.Decimal(20,2)
+ operations Operation[]
 }
-
-model Operation {
-  id             String          @id @default(uuid())
-  idempotencyKey String          @unique
-  type           String
-  status         OperationStatus @default(POSTED)
-  occurredAt     DateTime
-  createdAt      DateTime        @default(now())
-  createdById    String
-  createdBy      User            @relation(fields: [createdById], references: [id])
-  dealerId       String?
-  dealer         Dealer?         @relation(fields: [dealerId], references: [id])
-  reversedById   String?         @unique
-  metadata       Json?
-  movements      InventoryMovement[]
-  moneyEntries   MoneyEntry[]
-  @@index([occurredAt])
-}
-
-model InventoryMovement {
-  id          String    @id @default(uuid())
-  operationId String
-  operation   Operation @relation(fields: [operationId], references: [id])
-  productId   String
-  product     Product   @relation(fields: [productId], references: [id])
-  quantity    Decimal   @db.Decimal(20, 4)
-  unitCost    Decimal?  @db.Decimal(20, 4)
-  @@index([productId])
-}
-
 model MoneyAccount {
-  id       String @id @default(uuid())
-  name     String @unique
-  currency String @default("UZS")
-  entries  MoneyEntry[]
+ id String @id @default(uuid())
+ name String @unique
+ currency String @default("UZS")
+ balance Decimal @default(0) @db.Decimal(20,2)
+ entries MoneyEntry[]
 }
-
+model Operation {
+ id String @id @default(uuid())
+ idempotencyKey String @unique
+ requestHash String
+ type String
+ status OperationStatus @default(POSTED)
+ occurredAt DateTime
+ createdAt DateTime @default(now())
+ createdById String
+ createdBy User @relation(fields:[createdById],references:[id])
+ dealerId String?
+ dealer Dealer? @relation(fields:[dealerId],references:[id])
+ reversalOfId String? @unique
+ metadata Json?
+ movements InventoryMovement[]
+ moneyEntries MoneyEntry[]
+ @@index([occurredAt])
+}
+model InventoryMovement {
+ id String @id @default(uuid())
+ operationId String
+ operation Operation @relation(fields:[operationId],references:[id])
+ productId String
+ product Product @relation(fields:[productId],references:[id])
+ quantity Decimal @db.Decimal(20,4)
+ unitCost Decimal? @db.Decimal(20,4)
+ @@index([productId])
+}
 model MoneyEntry {
-  id          String       @id @default(uuid())
-  operationId String
-  operation   Operation    @relation(fields: [operationId], references: [id])
-  accountId   String
-  account     MoneyAccount @relation(fields: [accountId], references: [id])
-  amount      Decimal      @db.Decimal(20, 2)
-  @@index([accountId])
+ id String @id @default(uuid())
+ operationId String
+ operation Operation @relation(fields:[operationId],references:[id])
+ accountId String
+ account MoneyAccount @relation(fields:[accountId],references:[id])
+ amount Decimal @db.Decimal(20,2)
+ @@index([accountId])
 }
-
 model AuditLog {
-  id         String   @id @default(uuid())
-  actorId    String?
-  action     String
-  entityType String
-  entityId   String
-  before     Json?
-  after      Json?
-  createdAt  DateTime @default(now())
-  @@index([entityType, entityId])
+ id String @id @default(uuid())
+ actorId String?
+ action String
+ entityType String
+ entityId String
+ before Json?
+ after Json?
+ createdAt DateTime @default(now())
+ @@index([entityType,entityId])
 }
