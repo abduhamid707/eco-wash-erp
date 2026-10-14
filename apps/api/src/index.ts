@@ -35,6 +35,10 @@ const amount = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/).refine(s => new Prisma
 const quantity = z.string().regex(/^\d{1,15}(\.\d{1,4})?$/).refine(s => new Prisma.Decimal(s).gt(0));
 const date = z.string().datetime({ offset: true });
 const cmd = z.discriminatedUnion('type', [
+ z.object({ type: z.literal('SUPPLIER_RECEIPT'), supplierId:id, productId:id, quantity, unitCost:amount, occurredAt:date }),
+ z.object({ type: z.literal('SUPPLIER_PAYMENT'), supplierId:id, accountId:id, amount, occurredAt:date }),
+ z.object({ type: z.literal('DEALER_OPENING'), dealerId:id, amount, occurredAt:date }),
+ z.object({ type: z.literal('SUPPLIER_OPENING'), supplierId:id, amount, occurredAt:date }),
  z.object({ type: z.literal('STOCK_RECEIPT'), productId: id, quantity, unitCost: amount.optional(), occurredAt: date }),
  z.object({ type: z.literal('PRODUCTION'), recipeId: id, batches: quantity, occurredAt: date }),
  z.object({ type: z.literal('SHIPMENT'), dealerId: id, productId: id, quantity, unitPrice: amount, occurredAt: date }),
@@ -65,6 +69,13 @@ app.post('/dealers', { preHandler: gate(financeRoles) }, async(req,reply)=>{
  const b=z.object({name:z.string().min(2),region:z.string().min(2)}).parse(req.body);
  return reply.code(201).send(await prisma.dealer.create({data:b}));
 });
+
+app.get('/suppliers', {preHandler:gate(financeRoles)}, async()=>prisma.supplier.findMany({orderBy:{name:'asc'}}).then(a=>a.map(x=>({...x,payable:x.payable.toString()}))));
+app.post('/suppliers', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const b=z.object({name:z.string().min(2)}).parse(req.body);
+ return reply.code(201).send(await prisma.supplier.create({data:b}));
+});
+
 app.get('/accounts', { preHandler: gate(financeRoles) }, async()=>prisma.moneyAccount.findMany().then(a=>a.map(x=>({...x,balance:x.balance.toString()}))));
 app.post('/accounts', { preHandler: gate(['OWNER']) }, async(req,reply)=>{
  const b=z.object({name:z.string().min(2),currency:z.literal('UZS').default('UZS')}).parse(req.body);
@@ -72,7 +83,7 @@ app.post('/accounts', { preHandler: gate(['OWNER']) }, async(req,reply)=>{
 });
 app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, async (req,reply) => {
  const b=commandBody.parse(req.body);
- if (req.session!.role==='WAREHOUSE' && b.command.type!=='STOCK_RECEIPT') return reply.code(403).send({error:'FORBIDDEN'});
+ if (req.session!.role==='WAREHOUSE' && !['STOCK_RECEIPT','SUPPLIER_RECEIPT'].includes(b.command.type)) return reply.code(403).send({error:'FORBIDDEN'});
  const hash=createHash('sha256').update(JSON.stringify(b.command)).digest('hex');
  // Serializability plus a transaction-level advisory lock serialize financial postings across API replicas.
  const op=await prisma.$transaction(async tx=>{
@@ -82,7 +93,8 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   const c=b.command;
   if(c.type==='ACCOUNT_TRANSFER' && c.fromAccountId===c.toAccountId) insufficient('SAME_ACCOUNT');
   const dealerId='dealerId' in c ? c.dealerId : undefined;
-  const result=await tx.operation.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,type:c.type,occurredAt:new Date(c.occurredAt),createdById:req.session!.id,dealerId,metadata:JSON.parse(JSON.stringify(c))}});
+  const supplierId='supplierId' in c ? c.supplierId : undefined;
+  const result=await tx.operation.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,type:c.type,occurredAt:new Date(c.occurredAt),createdById:req.session!.id,dealerId,supplierId,metadata:JSON.parse(JSON.stringify(c))}});
   const stock=async(productId:string,delta:Prisma.Decimal,unitCost?:string)=>{
    const product=await tx.product.findUnique({where:{id:productId}});
    if(!product) throw new Error('PRODUCT_NOT_FOUND');
@@ -98,6 +110,24 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    await tx.moneyAccount.update({where:{id:accountId},data:{balance:{increment:delta}}});
    await tx.moneyEntry.create({data:{operationId:result.id,accountId,amount:delta}});
   };
+  const dealerChange=async(dealerId:string,delta:Prisma.Decimal)=>{
+   const dealer=await tx.dealer.findUnique({where:{id:dealerId}});
+   if(!dealer||!dealer.active) insufficient('DEALER_NOT_FOUND');
+   if(dealer.receivable.add(delta).lt(0)) insufficient('NEGATIVE_DEALER_BALANCE');
+   await tx.dealer.update({where:{id:dealerId},data:{receivable:{increment:delta}}});
+   await tx.dealerEntry.create({data:{dealerId,operationId:result.id,amount:delta}});
+  };
+  const supplierChange=async(supplierId:string,delta:Prisma.Decimal)=>{
+   const supplier=await tx.supplier.findUnique({where:{id:supplierId}});
+   if(!supplier||!supplier.active) insufficient('SUPPLIER_NOT_FOUND');
+   if(supplier.payable.add(delta).lt(0)) insufficient('NEGATIVE_SUPPLIER_BALANCE');
+   await tx.supplier.update({where:{id:supplierId},data:{payable:{increment:delta}}});
+   await tx.supplierEntry.create({data:{supplierId,operationId:result.id,amount:delta}});
+  };
+  if(c.type==='DEALER_OPENING') await dealerChange(c.dealerId,dec(c.amount));
+  if(c.type==='SUPPLIER_OPENING') await supplierChange(c.supplierId,dec(c.amount));
+  if(c.type==='SUPPLIER_RECEIPT'){await stock(c.productId,dec(c.quantity),c.unitCost);await supplierChange(c.supplierId,dec(c.quantity).mul(c.unitCost));}
+  if(c.type==='SUPPLIER_PAYMENT'){await supplierChange(c.supplierId,dec(c.amount).neg());await changeAccount(c.accountId,dec(c.amount).neg());}
   if(c.type==='STOCK_RECEIPT') await stock(c.productId,dec(c.quantity),c.unitCost);
   if(c.type==='PRODUCTION'){
    const recipe=await tx.recipe.findUnique({where:{id:c.recipeId},include:{ingredients:true,product:true}});
@@ -116,14 +146,14 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    if(!dealer) throw new Error('DEALER_NOT_FOUND');
    if(!dealer.active) insufficient('DEALER_INACTIVE');
    await stock(c.productId,dec(c.quantity).neg());
-   await tx.dealer.update({where:{id:c.dealerId},data:{receivable:{increment:dec(c.quantity).mul(c.unitPrice)}}});
+   await dealerChange(c.dealerId,dec(c.quantity).mul(c.unitPrice));
   }
   if(c.type==='DEALER_PAYMENT'){
    const dealer=await tx.dealer.findUnique({where:{id:c.dealerId}});
    if(!dealer) throw new Error('DEALER_NOT_FOUND');
    if(!dealer.active) insufficient('DEALER_INACTIVE');
    if(dealer.receivable.lt(c.amount)) insufficient('PAYMENT_EXCEEDS_DEBT');
-   await tx.dealer.update({where:{id:c.dealerId},data:{receivable:{decrement:dec(c.amount)}}});
+   await dealerChange(c.dealerId,dec(c.amount).neg());
    await changeAccount(c.accountId,dec(c.amount));
   }
   if(c.type==='EXPENSE') await changeAccount(c.accountId,dec(c.amount).neg());
@@ -139,13 +169,13 @@ app.get('/operations', { preHandler:gate(allRoles) }, async req=>{
  return prisma.operation.findMany({take:limit,orderBy:{createdAt:'desc'},include:{createdBy:{select:{name:true}},movements:true,moneyEntries:true}});
 });
 app.get('/dashboard', { preHandler: gate(allRoles) }, async()=>{
- const [products,dealers,accounts,operations]=await Promise.all([
+ const [products,dealers,accounts,operations,suppliers]=await Promise.all([
   prisma.product.findMany({select:{id:true,name:true,unit:true,stock:true,isRaw:true}}),
   prisma.dealer.findMany({select:{id:true,name:true,region:true,receivable:true}}),
   prisma.moneyAccount.findMany({select:{id:true,name:true,balance:true,currency:true}}),
-  prisma.operation.count()
+  prisma.operation.count(),prisma.supplier.findMany({select:{id:true,name:true,payable:true}})
  ]);
- return {products:products.map(x=>({...x,stock:x.stock.toString()})),dealers:dealers.map(x=>({...x,receivable:x.receivable.toString()})),accounts:accounts.map(x=>({...x,balance:x.balance.toString()})),operationCount:operations};
+ return {products:products.map(x=>({...x,stock:x.stock.toString()})),dealers:dealers.map(x=>({...x,receivable:x.receivable.toString()})),accounts:accounts.map(x=>({...x,balance:x.balance.toString()})),operationCount:operations,suppliers:suppliers.map(x=>({...x,payable:x.payable.toString()}))};
 });
 
 
@@ -235,11 +265,12 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
 });
 
 app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{
- const [products,dealers,accounts,ops]=await Promise.all([
+ const [products,dealers,accounts,ops,suppliers]=await Promise.all([
   prisma.product.findMany({orderBy:{name:'asc'}}),
   prisma.dealer.findMany({orderBy:{name:'asc'}}),
   prisma.moneyAccount.findMany({orderBy:{name:'asc'}}),
-  prisma.operation.findMany({orderBy:{createdAt:'desc'},take:10000,include:{createdBy:{select:{name:true}}}})
+  prisma.operation.findMany({orderBy:{createdAt:'desc'},take:10000,include:{createdBy:{select:{name:true}}}}),
+  prisma.supplier.findMany({orderBy:{name:'asc'}})
  ]);
  const wb=new ExcelJS.Workbook();
  wb.creator='ECO WASH ERP';
@@ -253,6 +284,7 @@ app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,
  };
  // Amounts are exported as text to avoid IEEE-754 rounding of monetary values.
  put('Ombor',['SKU','Mahsulot','Birlik','Xomashyo','Qoldiq'],products.map(x=>[x.sku,x.name,x.unit,x.isRaw?'Ha':'Yo‘q',x.stock.toString()]));
+ put('Yetkazib beruvchilar',['Yetkazib beruvchi','Qarz UZS'],suppliers.map(x=>[x.name,x.payable.toString()]));
  put('Diler qarzlari',['Diler','Viloyat','Qarz UZS'],dealers.map(x=>[x.name,x.region,x.receivable.toString()]));
  put('Pul hisoblari',['Hisob','Valyuta','Qoldiq'],accounts.map(x=>[x.name,x.currency,x.balance.toString()]));
  put('Operatsiyalar',['ID','Turi','Sana','Kiritgan','Status'],ops.map(x=>[x.id,x.type,x.occurredAt.toISOString(),x.createdBy.name,x.status]));

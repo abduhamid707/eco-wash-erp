@@ -44,6 +44,7 @@ model Dealer {
  active Boolean @default(true)
  receivable Decimal @default(0) @db.Decimal(20,2)
  operations Operation[]
+ entries DealerEntry[]
 }
 model MoneyAccount {
  id String @id @default(uuid())
@@ -53,6 +54,10 @@ model MoneyAccount {
  entries MoneyEntry[]
 }
 model Operation {
+ supplierId String?
+ supplier Supplier? @relation(fields:[supplierId],references:[id])
+ supplierEntries SupplierEntry[]
+ dealerEntries DealerEntry[]
  id String @id @default(uuid())
  idempotencyKey String @unique
  requestHash String
@@ -155,4 +160,31 @@ model PayrollPayment {
  operationId String @unique
  createdAt DateTime @default(now())
  @@index([employeeId,month])
+}
+
+model DealerEntry {
+ id String @id @default(uuid())
+ dealerId String
+ dealer Dealer @relation(fields:[dealerId],references:[id])
+ operationId String
+ operation Operation @relation(fields:[operationId],references:[id])
+ amount Decimal @db.Decimal(20,2)
+ @@index([dealerId])
+}
+model Supplier {
+ id String @id @default(uuid())
+ name String @unique
+ active Boolean @default(true)
+ payable Decimal @default(0) @db.Decimal(20,2)
+ operations Operation[]
+ entries SupplierEntry[]
+}
+model SupplierEntry {
+ id String @id @default(uuid())
+ supplierId String
+ supplier Supplier @relation(fields:[supplierId],references:[id])
+ operationId String
+ operation Operation @relation(fields:[operationId],references:[id])
+ amount Decimal @db.Decimal(20,2)
+ @@index([supplierId])
 }
