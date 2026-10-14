@@ -307,6 +307,23 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
 });
 
 
+
+app.get('/reports/summary', {preHandler:gate(financeRoles)}, async(req)=>{
+ const q=z.object({from:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),to:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/)}).parse(req.query);
+ const start=new Date(q.from+'T00:00:00.000Z');
+ const end=new Date(q.to+'T00:00:00.000Z');
+ if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||start>end) insufficient('INVALID_DATE_RANGE');
+ end.setUTCDate(end.getUTCDate()+1);
+ const records=await prisma.operation.findMany({where:{occurredAt:{gte:start,lt:end},status:'POSTED'},select:{type:true,metadata:true}});
+ const totals:Record<string,Prisma.Decimal>={};
+ for(const op of records){
+  const c=op.metadata as {quantity?:string;unitPrice?:string;amount?:string;type?:string};
+  const sum=op.type==='SHIPMENT' ? dec(c.quantity??'0').mul(c.unitPrice??'0') : dec(c.amount??'0');
+  totals[op.type]=(totals[op.type]??dec('0')).add(sum);
+ }
+ return {from:q.from,to:q.to,operations:records.length,totals:Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,v.toString()])),note:'Cash receipts are not automatically sales; this is operational turnover, not net profit.'};
+});
+
 app.get('/audit/reconciliation', {preHandler:gate(['OWNER'])}, async()=>{
  const [products,dealers,suppliers,accounts,stockEntries,dealerEntries,supplierEntries,moneyEntries]=await Promise.all([
   prisma.product.findMany({select:{id:true,name:true,stock:true}}),
