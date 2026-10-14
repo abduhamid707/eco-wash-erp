@@ -1,0 +1,19 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: eco_wash
+      POSTGRES_USER: eco
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-eco_local_change_me}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - eco_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eco -d eco_wash"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+volumes:
+  eco_pgdata:
