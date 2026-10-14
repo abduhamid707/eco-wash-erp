@@ -39,11 +39,11 @@ const cmd = z.discriminatedUnion('type', [
  z.object({ type: z.literal('DEALER_PAYMENT'), dealerId: id, accountId: id, amount, occurredAt: date }),
  z.object({ type: z.literal('EXPENSE'), accountId: id, amount, category: z.string().min(2).max(100), description: z.string().max(500).default(''), occurredAt: date }),
  z.object({ type: z.literal('CASH_RECEIPT'), accountId: id, amount, description: z.string().max(500).default(''), occurredAt: date }),
- z.object({ type: z.literal('ACCOUNT_TRANSFER'), fromAccountId: id, toAccountId: id, amount, occurredAt: date }).refine(v=>v.fromAccountId!==v.toAccountId, 'Accounts must differ')
+ z.object({ type: z.literal('ACCOUNT_TRANSFER'), fromAccountId: id, toAccountId: id, amount, occurredAt: date })
 ]);
 const commandBody = z.object({ idempotencyKey: id, command: cmd });
 const dec = (x: string | Prisma.Decimal) => new Prisma.Decimal(x);
-const insufficient = (s: string) => { throw Object.assign(new Error(s), { statusCode: 409 }); };
+const insufficient = (s: string): never => { throw Object.assign(new Error(s), { statusCode: 409 }); };
 app.get('/health', async () => ({ status: 'ok', service: 'eco-wash-api' }));
 app.post('/auth/login', async (req, reply) => {
  const b = z.object({ login: z.string().min(1), password: z.string().min(1) }).parse(req.body);
@@ -78,6 +78,7 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   const previous=await tx.operation.findUnique({where:{idempotencyKey:b.idempotencyKey}});
   if(previous){if(previous.requestHash!==hash) insufficient('IDEMPOTENCY_KEY_REUSED'); return previous;}
   const c=b.command;
+  if(c.type==='ACCOUNT_TRANSFER' && c.fromAccountId===c.toAccountId) insufficient('SAME_ACCOUNT');
   const dealerId='dealerId' in c ? c.dealerId : undefined;
   const result=await tx.operation.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,type:c.type,occurredAt:new Date(c.occurredAt),createdById:req.session!.id,dealerId,metadata:JSON.parse(JSON.stringify(c))}});
   const stock=async(productId:string,delta:Prisma.Decimal,unitCost?:string)=>{
@@ -135,7 +136,7 @@ app.setErrorHandler((err,req,reply)=>{
  if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2002') return reply.code(409).send({error:'DUPLICATE'});
  if(err instanceof Prisma.PrismaClientKnownRequestError && err.code==='P2034') return reply.code(409).send({error:'RETRY_TRANSACTION'});
  const code=(err as {statusCode?:number}).statusCode??500;
- return reply.code(code).send({error:code===409?err.message:'SERVER_ERROR'});
+ return reply.code(code).send({error:code===409?(err as Error).message:'SERVER_ERROR'});
 });
 process.on('SIGTERM',async()=>{await app.close();await prisma.$disconnect();});
 await app.listen({port,host:'0.0.0.0'});
