@@ -223,18 +223,19 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
  },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:15000,maxWait:15000});
  return reply.code(201).send({id:op.id,type:op.type,status:op.status,idempotencyKey:op.idempotencyKey});
 });
-app.get('/operations', { preHandler:gate(allRoles) }, async req=>{
+app.get('/operations', { preHandler:gate(financeRoles) }, async req=>{
  const limit=Math.min(100,Number((req.query as Record<string,string>).limit)||30);
  return prisma.operation.findMany({take:limit,orderBy:{createdAt:'desc'},include:{createdBy:{select:{name:true}},movements:true,moneyEntries:true}});
 });
-app.get('/dashboard', { preHandler: gate(allRoles) }, async()=>{
+app.get('/dashboard', { preHandler: gate(allRoles) }, async(req)=>{
  const [products,dealers,accounts,operations,suppliers]=await Promise.all([
   prisma.product.findMany({select:{id:true,name:true,unit:true,stock:true,isRaw:true}}),
   prisma.dealer.findMany({select:{id:true,name:true,region:true,receivable:true}}),
   prisma.moneyAccount.findMany({select:{id:true,name:true,balance:true,currency:true}}),
   prisma.operation.count(),prisma.supplier.findMany({select:{id:true,name:true,payable:true}})
  ]);
- return {products:products.map(x=>({...x,stock:x.stock.toString()})),dealers:dealers.map(x=>({...x,receivable:x.receivable.toString()})),accounts:accounts.map(x=>({...x,balance:x.balance.toString()})),operationCount:operations,suppliers:suppliers.map(x=>({...x,payable:x.payable.toString()}))};
+ const finance=financeRoles.includes(req.session!.role);
+ return {products:products.map(x=>({...x,stock:x.stock.toString()})),dealers:finance?dealers.map(x=>({...x,receivable:x.receivable.toString()})):[],accounts:finance?accounts.map(x=>({...x,balance:x.balance.toString()})):[],operationCount:finance?operations:0,suppliers:finance?suppliers.map(x=>({...x,payable:x.payable.toString()})):[]};
 });
 
 

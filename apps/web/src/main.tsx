@@ -35,7 +35,7 @@ function App(){
   try{const response=await fetch('/api/reports/export.xlsx',{headers:{Authorization:'Bearer '+token}});if(!response.ok)throw new Error('Eksport muvaffaqiyatsiz');const blob=await response.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='eco-wash-report.xlsx';a.click();URL.revokeObjectURL(url);}catch(e){setError(String(e));}
  }
  async function refresh(){
-  try{const [snapshot,operations,recipeList]=await Promise.all([api('/dashboard'),api('/operations'),api('/recipes')]);setData(snapshot);setHistory(operations);setRecipes(recipeList.map((r:Item)=>({...r,name:String(r.productName)+' v'+String(r.version)+' '+(r.active?'':'(arxiv)')})));}catch(e){setError(String(e));}
+  try{const snapshot=await api('/dashboard');setData(snapshot);const [operations,recipeList]=await Promise.allSettled([api('/operations'),api('/recipes')]);setHistory(operations.status==='fulfilled'?operations.value:[]);setRecipes(recipeList.status==='fulfilled'?recipeList.value.map((r:Item)=>({...r,name:String(r.productName)+' v'+String(r.version)+' '+(r.active?'':'(arxiv)')})):[]);}catch(e){setError(String(e));}
  }
  useEffect(()=>{if(token)void refresh();},[token]);
  const set=(name:string,v:string)=>setValues(s=>({...s,[name]:v}));
