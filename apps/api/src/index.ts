@@ -83,14 +83,15 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   const result=await tx.operation.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,type:c.type,occurredAt:new Date(c.occurredAt),createdById:req.session!.id,dealerId,metadata:JSON.parse(JSON.stringify(c))}});
   const stock=async(productId:string,delta:Prisma.Decimal,unitCost?:string)=>{
    const product=await tx.product.findUnique({where:{id:productId}});
-   if(!product?.active) insufficient('PRODUCT_NOT_FOUND');
+   if(!product) throw new Error('PRODUCT_NOT_FOUND');
+   if(!product.active) insufficient('PRODUCT_INACTIVE');
    if(product.stock.add(delta).lt(0)) insufficient('INSUFFICIENT_STOCK');
    await tx.product.update({where:{id:productId},data:{stock:{increment:delta}}});
    await tx.inventoryMovement.create({data:{operationId:result.id,productId,quantity:delta,unitCost:unitCost?dec(unitCost):undefined}});
   };
   const changeAccount=async(accountId:string,delta:Prisma.Decimal)=>{
    const account=await tx.moneyAccount.findUnique({where:{id:accountId}});
-   if(!account) insufficient('ACCOUNT_NOT_FOUND');
+   if(!account) throw new Error('ACCOUNT_NOT_FOUND');
    if(account.balance.add(delta).lt(0)) insufficient('INSUFFICIENT_FUNDS');
    await tx.moneyAccount.update({where:{id:accountId},data:{balance:{increment:delta}}});
    await tx.moneyEntry.create({data:{operationId:result.id,accountId,amount:delta}});
@@ -98,13 +99,15 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   if(c.type==='STOCK_RECEIPT') await stock(c.productId,dec(c.quantity),c.unitCost);
   if(c.type==='SHIPMENT'){
    const dealer=await tx.dealer.findUnique({where:{id:c.dealerId}});
-   if(!dealer?.active) insufficient('DEALER_NOT_FOUND');
+   if(!dealer) throw new Error('DEALER_NOT_FOUND');
+   if(!dealer.active) insufficient('DEALER_INACTIVE');
    await stock(c.productId,dec(c.quantity).neg());
    await tx.dealer.update({where:{id:c.dealerId},data:{receivable:{increment:dec(c.quantity).mul(c.unitPrice)}}});
   }
   if(c.type==='DEALER_PAYMENT'){
    const dealer=await tx.dealer.findUnique({where:{id:c.dealerId}});
-   if(!dealer?.active) insufficient('DEALER_NOT_FOUND');
+   if(!dealer) throw new Error('DEALER_NOT_FOUND');
+   if(!dealer.active) insufficient('DEALER_INACTIVE');
    if(dealer.receivable.lt(c.amount)) insufficient('PAYMENT_EXCEEDS_DEBT');
    await tx.dealer.update({where:{id:c.dealerId},data:{receivable:{decrement:dec(c.amount)}}});
    await changeAccount(c.accountId,dec(c.amount));
