@@ -34,3 +34,35 @@ const report=await fetch(base+'/reports/export.xlsx',{headers:{Authorization:'Be
 assert.equal(report.status,200);
 assert.ok(Number(report.headers.get('content-length')||0)>0 || (await report.arrayBuffer()).byteLength>100);
 console.log('PASS: login, stock, debt, payment, expense, idempotency, report');
+
+const supplier=await api('/suppliers','POST',{name:'Kimyo mahsulotlari CI'});
+const raw=await api('/products','POST',{sku:'RAW-SLES-CI',name:'SLES CI',unit:'kg',isRaw:true});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'SUPPLIER_RECEIPT',supplierId:supplier.id,productId:raw.id,quantity:'20',unitCost:'5',occurredAt:when}});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'SUPPLIER_PAYMENT',supplierId:supplier.id,accountId:account.id,amount:'30',occurredAt:when}});
+const supplierSnapshot=await api('/dashboard');
+assert.equal(supplierSnapshot.suppliers.find(x=>x.id===supplier.id).payable,'70');
+assert.equal(supplierSnapshot.accounts.find(x=>x.id===account.id).balance,'1120');
+const recipe=await api('/recipes','POST',{productId:product.id,outputQuantity:'2',ingredients:[{materialId:raw.id,quantity:'3'}]});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'PRODUCTION',recipeId:recipe.id,batches:'1',occurredAt:when}});
+const afterProduction=await api('/dashboard');
+assert.equal(afterProduction.products.find(x=>x.id===raw.id).stock,'17');
+assert.equal(afterProduction.products.find(x=>x.id===product.id).stock,'9');
+const shipment=await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'SHIPMENT',dealerId:dealer.id,productId:product.id,quantity:'1',unitPrice:'100',occurredAt:when}});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'DEALER_RETURN',shipmentId:shipment.id,quantity:'1',occurredAt:when}});
+const afterReturn=await api('/dashboard');
+assert.equal(afterReturn.products.find(x=>x.id===product.id).stock,'9');
+assert.equal(afterReturn.dealers.find(x=>x.id===dealer.id).receivable,'100');
+const cashOp=await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'CASH_RECEIPT',accountId:account.id,amount:'40',occurredAt:when}});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'VOID_OPERATION',targetId:cashOp.id,occurredAt:when}});
+const afterVoid=await api('/dashboard');
+assert.equal(afterVoid.accounts.find(x=>x.id===account.id).balance,'1120');
+const staff=await api('/employees','POST',{name:'Test Ishchi',monthlySalary:'300',position:'Operator'});
+await api('/attendance','POST',{employeeId:staff.id,date:'2026-10-14',worked:true});
+const payroll=await api('/payroll/payments','POST',{idempotencyKey:uuid(),employeeId:staff.id,accountId:account.id,month:'2026-10',type:'ADVANCE',amount:'30'});
+assert.ok(payroll.id);
+const salary=await api('/payroll?month=2026-10');
+assert.equal(salary.find(x=>x.id===staff.id).remaining,'270');
+const afterPayroll=await api('/dashboard');
+assert.equal(afterPayroll.accounts.find(x=>x.id===account.id).balance,'1090');
+console.log('PASS: supplier credit, recipe, production, return, reversal, attendance, payroll');
+
