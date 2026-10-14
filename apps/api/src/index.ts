@@ -137,7 +137,7 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    const original=shipment.metadata as {productId?:string;quantity?:string;unitPrice?:string};
    const pid=original?.productId, origQuantity=original?.quantity, unitPrice=original?.unitPrice, originalDealer=shipment.dealerId;
    if(!pid||!origQuantity||!unitPrice||!originalDealer) insufficient('INVALID_SHIPMENT');
-   const prior=await tx.operation.findMany({where:{type:'DEALER_RETURN',status:'POSTED'}});
+   const prior=await tx.operation.findMany({where:{type:'DEALER_RETURN',status:'POSTED',id:{not:result.id}}});
    const already=prior.filter(x=>(x.metadata as {shipmentId?:string})?.shipmentId===c.shipmentId)
     .reduce((total,x)=>total.add((x.metadata as {quantity:string}).quantity),dec('0'));
    if(already.add(c.quantity).gt(origQuantity!)) insufficient('RETURN_EXCEEDS_SHIPMENT');
