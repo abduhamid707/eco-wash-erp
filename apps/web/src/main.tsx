@@ -7,8 +7,8 @@ import { RecipePanel } from './RecipePanel';
 import { ReportsPanel } from './ReportsPanel';
 type Item={id:string;name:string;[key:string]:unknown};
 type Snapshot={products:Item[];dealers:Item[];accounts:Item[];suppliers:Item[];operationCount:number};
-type CommandType='INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
-const labels:Record<CommandType,string>={INVENTORY_ADJUSTMENT:'Inventarizatsiya (rahbar)',VOID_OPERATION:'Operatsiyani bekor qilish (rahbar)',DEALER_RETURN:'Diler qaytargan mahsulot',SUPPLIER_RECEIPT:'Yetkazib beruvchidan xomashyo',SUPPLIER_PAYMENT:'Yetkazib beruvchiga to‘lov',DEALER_OPENING:'Diler boshlang‘ich qarzi',SUPPLIER_OPENING:'Yetkazib beruvchi boshlang‘ich qarzi',STOCK_RECEIPT:'Xomashyo / mahsulot kirimi',PRODUCTION:'Ishlab chiqarish',SHIPMENT:'Dilerga jo‘natma',DEALER_PAYMENT:'Diler to‘lovi',EXPENSE:'Xarajat',CASH_RECEIPT:'Pul kirimi',ACCOUNT_TRANSFER:'Hisoblararo o‘tkazma'};
+type CommandType='ACCOUNT_OPENING'|'INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
+const labels:Record<CommandType,string>={ACCOUNT_OPENING:'Boshlang‘ich kassa qoldig‘i (rahbar)',INVENTORY_ADJUSTMENT:'Inventarizatsiya (rahbar)',VOID_OPERATION:'Operatsiyani bekor qilish (rahbar)',DEALER_RETURN:'Diler qaytargan mahsulot',SUPPLIER_RECEIPT:'Yetkazib beruvchidan xomashyo',SUPPLIER_PAYMENT:'Yetkazib beruvchiga to‘lov',DEALER_OPENING:'Diler boshlang‘ich qarzi',SUPPLIER_OPENING:'Yetkazib beruvchi boshlang‘ich qarzi',STOCK_RECEIPT:'Xomashyo / mahsulot kirimi',PRODUCTION:'Ishlab chiqarish',SHIPMENT:'Dilerga jo‘natma',DEALER_PAYMENT:'Diler to‘lovi',EXPENSE:'Xarajat',CASH_RECEIPT:'Pul kirimi',ACCOUNT_TRANSFER:'Hisoblararo o‘tkazma'};
 function App(){
  const [token,setToken]=useState(sessionStorage.getItem('eco_token')||'');
  const [login,setLogin]=useState(''),[password,setPassword]=useState('');
@@ -54,7 +54,7 @@ function App(){
   e.preventDefault();setBusy(true);setError('');
   try{const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password})});const json=await response.json();if(!response.ok)throw Error('Login yoki parol xato');sessionStorage.setItem('eco_token',json.token);setToken(json.token);setPassword('');}catch(e){setError(String(e));}finally{setBusy(false);}
  }
- const fields:Record<CommandType,Array<[string,string,string]>>={INVENTORY_ADJUSTMENT:[['productId','Mahsulot / xomashyo','products'],['actualQuantity','Sanab chiqilgan haqiqiy qoldiq','nonnegative'],['reason','Farq sababi','text']],
+ const fields:Record<CommandType,Array<[string,string,string]>>={ACCOUNT_OPENING:[['accountId','Pul hisobi','accounts'],['amount','Tasdiqlangan boshlang‘ich qoldiq','number']],INVENTORY_ADJUSTMENT:[['productId','Mahsulot / xomashyo','products'],['actualQuantity','Sanab chiqilgan haqiqiy qoldiq','nonnegative'],['reason','Farq sababi','text']],
   VOID_OPERATION:[['targetId','Bekor qilinadigan operatsiya ID','text']],
   DEALER_RETURN:[['shipmentId','Avvalgi jo‘natma ID','text'],['quantity','Qaytgan miqdor','number']],
   SUPPLIER_RECEIPT:[['supplierId','Yetkazib beruvchi','suppliers'],['productId','Xomashyo','products'],['quantity','Miqdor','number'],['unitCost','Birlik tannarxi','number']],

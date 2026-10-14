@@ -35,6 +35,7 @@ const amount = z.string().regex(/^\d{1,15}(\.\d{1,2})?$/).refine(s => new Prisma
 const quantity = z.string().regex(/^\d{1,15}(\.\d{1,4})?$/).refine(s => new Prisma.Decimal(s).gt(0));
 const date = z.string().datetime({ offset: true });
 const cmd = z.discriminatedUnion('type', [
+ z.object({ type:z.literal('ACCOUNT_OPENING'),accountId:id,amount,occurredAt:date }),
  z.object({ type:z.literal('INVENTORY_ADJUSTMENT'),productId:id,actualQuantity:z.string().regex(/^\d{1,15}(\.\d{1,4})?$/),reason:z.string().min(8).max(500),occurredAt:date }),
  z.object({ type: z.literal('VOID_OPERATION'), targetId:id, occurredAt:date }),
  z.object({ type: z.literal('DEALER_RETURN'), shipmentId:id, quantity, occurredAt:date }),
@@ -86,7 +87,7 @@ app.post('/accounts', { preHandler: gate(['OWNER']) }, async(req,reply)=>{
 });
 app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, async (req,reply) => {
  const b=commandBody.parse(req.body);
- if(['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING','INVENTORY_ADJUSTMENT'].includes(b.command.type) && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
+ if(['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING','INVENTORY_ADJUSTMENT','ACCOUNT_OPENING'].includes(b.command.type) && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
  if (req.session!.role==='WAREHOUSE' && !['STOCK_RECEIPT','SUPPLIER_RECEIPT'].includes(b.command.type)) return reply.code(403).send({error:'FORBIDDEN'});
  const hash=createHash('sha256').update(JSON.stringify(b.command)).digest('hex');
  // Serializability plus a transaction-level advisory lock serialize financial postings across API replicas.
@@ -166,6 +167,11 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    await tx.operation.update({where:{id:result.id},data:{reversalOfId:original.id}});
   }
 
+  if(c.type==='ACCOUNT_OPENING'){
+   const opening=await tx.operation.findFirst({where:{type:'ACCOUNT_OPENING',status:'POSTED',id:{not:result.id},moneyEntries:{some:{accountId:c.accountId}}}});
+   if(opening) insufficient('ACCOUNT_OPENING_ALREADY_ENTERED');
+   await changeAccount(c.accountId,dec(c.amount));
+  }
   if(c.type==='DEALER_OPENING'){
    const old=await tx.operation.findFirst({where:{dealerId:c.dealerId,type:'DEALER_OPENING',status:'POSTED',id:{not:result.id}}});
    if(old) insufficient('OPENING_ALREADY_ENTERED');
@@ -176,7 +182,10 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    if(old) insufficient('OPENING_ALREADY_ENTERED');
    await supplierChange(c.supplierId,dec(c.amount));
   }
-  if(c.type==='SUPPLIER_RECEIPT'){await stock(c.productId,dec(c.quantity),c.unitCost);await supplierChange(c.supplierId,dec(c.quantity).mul(c.unitCost));}
+  if(c.type==='SUPPLIER_RECEIPT'){
+   const material=await tx.product.findUnique({where:{id:c.productId}});
+   if(!material?.isRaw) insufficient('RECEIPT_MUST_BE_RAW_MATERIAL');
+   await stock(c.productId,dec(c.quantity),c.unitCost);await supplierChange(c.supplierId,dec(c.quantity).mul(c.unitCost));}
   if(c.type==='SUPPLIER_PAYMENT'){await supplierChange(c.supplierId,dec(c.amount).neg());await changeAccount(c.accountId,dec(c.amount).neg());}
   if(c.type==='STOCK_RECEIPT') await stock(c.productId,dec(c.quantity),c.unitCost);
   if(c.type==='PRODUCTION'){
