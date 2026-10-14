@@ -132,19 +132,22 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   
   if(c.type==='DEALER_RETURN'){
    const shipment=await tx.operation.findUnique({where:{id:c.shipmentId}});
-   if(!shipment||shipment.type!=='SHIPMENT'||shipment.status!=='POSTED') insufficient('ORIGINAL_SHIPMENT_NOT_FOUND');
+   if(!shipment) throw new Error('ORIGINAL_SHIPMENT_NOT_FOUND');
+   if(shipment.type!=='SHIPMENT'||shipment.status!=='POSTED') insufficient('ORIGINAL_SHIPMENT_INVALID');
    const original=shipment.metadata as {productId?:string;quantity?:string;unitPrice?:string};
-   if(!original?.productId||!original.quantity||!original.unitPrice||!shipment.dealerId) insufficient('INVALID_SHIPMENT');
+   const pid=original?.productId, origQuantity=original?.quantity, unitPrice=original?.unitPrice, originalDealer=shipment.dealerId;
+   if(!pid||!origQuantity||!unitPrice||!originalDealer) insufficient('INVALID_SHIPMENT');
    const prior=await tx.operation.findMany({where:{type:'DEALER_RETURN',status:'POSTED'}});
    const already=prior.filter(x=>(x.metadata as {shipmentId?:string})?.shipmentId===c.shipmentId)
     .reduce((total,x)=>total.add((x.metadata as {quantity:string}).quantity),dec('0'));
-   if(already.add(c.quantity).gt(original.quantity)) insufficient('RETURN_EXCEEDS_SHIPMENT');
-   await stock(original.productId,dec(c.quantity));
-   await dealerChange(shipment.dealerId,dec(c.quantity).mul(original.unitPrice).neg());
+   if(already.add(c.quantity).gt(origQuantity!)) insufficient('RETURN_EXCEEDS_SHIPMENT');
+   await stock(pid!,dec(c.quantity));
+   await dealerChange(originalDealer!,dec(c.quantity).mul(unitPrice!).neg());
   }
   if(c.type==='VOID_OPERATION'){
    const original=await tx.operation.findUnique({where:{id:c.targetId},include:{movements:true,moneyEntries:true,dealerEntries:true,supplierEntries:true}});
-   if(!original||original.status!=='POSTED'||original.type==='VOID_OPERATION'||original.type.startsWith('PAYROLL_')) insufficient('CANNOT_VOID_OPERATION');
+   if(!original) throw new Error('ORIGINAL_OPERATION_NOT_FOUND');
+   if(original.status!=='POSTED'||original.type==='VOID_OPERATION'||original.type.startsWith('PAYROLL_')) insufficient('CANNOT_VOID_OPERATION');
    const dependents=await tx.operation.findMany({where:{type:'DEALER_RETURN',status:'POSTED'}});
    if(dependents.some(x=>(x.metadata as {shipmentId?:string})?.shipmentId===original.id)) insufficient('SHIPMENT_HAS_RETURNS');
    for(const m of original.movements) await stock(m.productId,m.quantity.neg(),m.unitCost?.toString());
