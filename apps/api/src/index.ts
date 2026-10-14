@@ -309,7 +309,7 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
 
 
 app.get('/reports/summary', {preHandler:gate(financeRoles)}, async(req)=>{
- const q=z.object({from:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/),to:z.string().regex(/^\\d{4}-\\d{2}-\\d{2}$/)}).parse(req.query);
+ const q=z.object({from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
  const start=new Date(q.from+'T00:00:00.000Z');
  const end=new Date(q.to+'T00:00:00.000Z');
  if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||start>end) insufficient('INVALID_DATE_RANGE');
