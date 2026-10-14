@@ -70,3 +70,12 @@ console.log('PASS: supplier credit, recipe, production, return, reversal, attend
 const reconciliation=await api('/audit/reconciliation');
 assert.equal(reconciliation.ok,true,'All balances must reconcile against transaction ledger');
 console.log('PASS: financial reconciliation');
+
+const inventoryBefore=await api('/dashboard');
+const previous=Number(inventoryBefore.products.find(x=>x.id===raw.id).stock);
+const adjustment=await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'INVENTORY_ADJUSTMENT',productId:raw.id,actualQuantity:String(previous+2),reason:'CI test count adjustment',occurredAt:when}});
+assert.ok(adjustment.id);
+const adjusted=await api('/dashboard');
+assert.equal(Number(adjusted.products.find(x=>x.id===raw.id).stock),previous+2);
+assert.equal((await api('/audit/reconciliation')).ok,true);
+console.log('PASS: inventory count adjustment reconciles with ledger');
