@@ -79,3 +79,10 @@ const adjusted=await api('/dashboard');
 assert.equal(Number(adjusted.products.find(x=>x.id===raw.id).stock),previous+2);
 assert.equal((await api('/audit/reconciliation')).ok,true);
 console.log('PASS: inventory count adjustment reconciles with ledger');
+
+const openingAccount=await api('/accounts','POST',{name:'Opening CI account'});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'ACCOUNT_OPENING',accountId:openingAccount.id,amount:'500',occurredAt:when}});
+assert.equal((await api('/dashboard')).accounts.find(a=>a.id===openingAccount.id).balance,'500');
+const finalCheck=await api('/audit/reconciliation');
+assert.equal(finalCheck.ok,true);
+console.log('PASS: opening balances reconcile');
