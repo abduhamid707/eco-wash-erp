@@ -4,6 +4,7 @@ import './style.css';
 import { addPending, listPending, removePending, markPendingError } from './offline';
 import { StaffPanel } from './StaffPanel';
 import { RecipePanel } from './RecipePanel';
+import { ReportsPanel } from './ReportsPanel';
 type Item={id:string;name:string;[key:string]:unknown};
 type Snapshot={products:Item[];dealers:Item[];accounts:Item[];suppliers:Item[];operationCount:number};
 type CommandType='INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
@@ -105,8 +106,7 @@ function App(){
  {tab==='recipes'&&<RecipePanel api={api} products={data?.products||[]} onSaved={refresh}/>}
  {tab==='staff'&&<StaffPanel api={api} accounts={data?.accounts||[]} onSaved={refresh}/>}
  
- {tab==='reports'&&<div className="panel"><h2>Hisobot va tekshiruv</h2><p className="muted">Jo‘natmalar sotuv sifatida, diler to‘lovlari esa qarzni yopish sifatida alohida yuritiladi. Foyda tannarx tasdiqlanmaguncha hisoblanmaydi.</p><div className="topactions"><button className="ghost" onClick={()=>void downloadExcel()}>↓ Excel hisoboti</button><button className="ghost" onClick={async()=>{setError('');try{const result=await api('/audit/reconciliation');setMessage(result.ok?'Barcha qoldiqlar jurnal bilan mos':'Hisobda farqlar mavjud: '+JSON.stringify(result.errors));}catch(e){setError(String(e));}}}>Qoldiqlarni solishtirish (rahbar)</button></div></div>}
-
+ {tab==='reports'&&<ReportsPanel api={api} downloadExcel={downloadExcel}/>}
  {tab==='catalog'&&<div className="columns"><form className="panel form" onSubmit={saveCatalog}><h2>Yangi yozuv</h2><label>Bo‘lim<select value={catalogKind} onChange={e=>{setCatalogKind(e.target.value as typeof catalogKind);setCatalog({});}}><option value="products">Mahsulotlar</option><option value="dealers">Dilerlar</option><option value="accounts">Pul hisoblari (faqat rahbar)</option><option value="suppliers">Yetkazib beruvchilar</option></select></label>{catalogFields[catalogKind].map(([key,title])=><label key={key}>{title}<input required={key!=='isRaw'} value={catalog[key]||''} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}/></label>)}<button disabled={busy}>Qo‘shish</button></form><div className="panel"><h2>Joriy ma’lumotlar</h2><ul>{((data?.[catalogKind]||[]) as Item[]).map(x=><li key={x.id}>{x.name}</li>)}</ul></div></div>}
  </section></main>;
 }
