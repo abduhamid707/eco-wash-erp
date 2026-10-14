@@ -115,14 +115,16 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   };
   const dealerChange=async(dealerId:string,delta:Prisma.Decimal)=>{
    const dealer=await tx.dealer.findUnique({where:{id:dealerId}});
-   if(!dealer||!dealer.active) insufficient('DEALER_NOT_FOUND');
+   if(!dealer) throw new Error('DEALER_NOT_FOUND');
+   if(!dealer.active) insufficient('DEALER_INACTIVE');
    if(dealer.receivable.add(delta).lt(0)) insufficient('NEGATIVE_DEALER_BALANCE');
    await tx.dealer.update({where:{id:dealerId},data:{receivable:{increment:delta}}});
    await tx.dealerEntry.create({data:{dealerId,operationId:result.id,amount:delta}});
   };
   const supplierChange=async(supplierId:string,delta:Prisma.Decimal)=>{
    const supplier=await tx.supplier.findUnique({where:{id:supplierId}});
-   if(!supplier||!supplier.active) insufficient('SUPPLIER_NOT_FOUND');
+   if(!supplier) throw new Error('SUPPLIER_NOT_FOUND');
+   if(!supplier.active) insufficient('SUPPLIER_INACTIVE');
    if(supplier.payable.add(delta).lt(0)) insufficient('NEGATIVE_SUPPLIER_BALANCE');
    await tx.supplier.update({where:{id:supplierId},data:{payable:{increment:delta}}});
    await tx.supplierEntry.create({data:{supplierId,operationId:result.id,amount:delta}});
