@@ -2,7 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import { Prisma, PrismaClient } from '@prisma/client';
-import { compare } from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
 import ExcelJS from 'exceljs';
 import { z, ZodError } from 'zod';
@@ -50,7 +50,7 @@ app.get('/health', async () => ({ status: 'ok', service: 'eco-wash-api' }));
 app.post('/auth/login', async (req, reply) => {
  const b = z.object({ login: z.string().min(1), password: z.string().min(1) }).parse(req.body);
  const user = await prisma.user.findUnique({ where: { login: b.login } });
- if (!user?.active || !(await compare(b.password,user.passwordHash))) return reply.code(401).send({ error: 'INVALID_CREDENTIALS' });
+ if (!user?.active || !(await bcrypt.compare(b.password,user.passwordHash))) return reply.code(401).send({ error: 'INVALID_CREDENTIALS' });
  return { token: app.jwt.sign({ id:user.id, role:user.role }), user: {id:user.id,name:user.name,role:user.role} };
 });
 app.get('/me', { preHandler: gate(allRoles) }, async req => prisma.user.findUnique({where:{id:req.session!.id},select:{id:true,name:true,role:true}}));

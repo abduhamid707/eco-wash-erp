@@ -1,11 +1,11 @@
 import {PrismaClient} from '@prisma/client';
-import {hash} from 'bcryptjs';
+import bcrypt from 'bcryptjs';
 const prisma=new PrismaClient();
 const login=process.env.BOOTSTRAP_LOGIN;
 const password=process.env.BOOTSTRAP_PASSWORD;
 if(!login||!password||password.length<12) throw new Error('Set BOOTSTRAP_LOGIN and BOOTSTRAP_PASSWORD (12+ chars)');
 const count=await prisma.user.count();
 if(count) throw new Error('Bootstrap allowed only if user table is empty');
-await prisma.user.create({data:{name:'Administrator',login,passwordHash:await hash(password,12),role:'OWNER'}});
+await prisma.user.create({data:{name:'Administrator',login,passwordHash:await bcrypt.hash(password,12),role:'OWNER'}});
 console.log('Administrator created; remove bootstrap credentials from shell history.');
 await prisma.$disconnect();
