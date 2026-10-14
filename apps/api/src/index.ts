@@ -4,6 +4,7 @@ import jwt from '@fastify/jwt';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { compare } from 'bcryptjs';
 import { createHash } from 'node:crypto';
+import ExcelJS from 'exceljs';
 import { z, ZodError } from 'zod';
 
 const prisma = new PrismaClient();
@@ -133,6 +134,35 @@ app.get('/dashboard', { preHandler: gate(allRoles) }, async()=>{
  ]);
  return {products:products.map(x=>({...x,stock:x.stock.toString()})),dealers:dealers.map(x=>({...x,receivable:x.receivable.toString()})),accounts:accounts.map(x=>({...x,balance:x.balance.toString()})),operationCount:operations};
 });
+
+app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{
+ const [products,dealers,accounts,ops]=await Promise.all([
+  prisma.product.findMany({orderBy:{name:'asc'}}),
+  prisma.dealer.findMany({orderBy:{name:'asc'}}),
+  prisma.moneyAccount.findMany({orderBy:{name:'asc'}}),
+  prisma.operation.findMany({orderBy:{createdAt:'desc'},take:10000,include:{createdBy:{select:{name:true}}}})
+ ]);
+ const wb=new ExcelJS.Workbook();
+ wb.creator='ECO WASH ERP';
+ const put=(title:string,headers:string[],rows:(string|number)[][])=>{
+  const sh=wb.addWorksheet(title);sh.addRow(headers);
+  for(const r of rows)sh.addRow(r);
+  sh.getRow(1).font={bold:true,color:{argb:'FFFFFFFF'}};
+  sh.getRow(1).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF0A2937'}};
+  sh.views=[{state:'frozen',ySplit:1}];
+  sh.columns=headers.map((name,i)=>({header:name,key:'c'+i,width:Math.max(18,Math.min(36,name.length+8))}));
+ };
+ // Amounts are exported as text to avoid IEEE-754 rounding of monetary values.
+ put('Ombor',['SKU','Mahsulot','Birlik','Xomashyo','Qoldiq'],products.map(x=>[x.sku,x.name,x.unit,x.isRaw?'Ha':'Yo‘q',x.stock.toString()]));
+ put('Diler qarzlari',['Diler','Viloyat','Qarz UZS'],dealers.map(x=>[x.name,x.region,x.receivable.toString()]));
+ put('Pul hisoblari',['Hisob','Valyuta','Qoldiq'],accounts.map(x=>[x.name,x.currency,x.balance.toString()]));
+ put('Operatsiyalar',['ID','Turi','Sana','Kiritgan','Status'],ops.map(x=>[x.id,x.type,x.occurredAt.toISOString(),x.createdBy.name,x.status]));
+ const bytes=await wb.xlsx.writeBuffer();
+ return reply.header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+  .header('Content-Disposition','attachment; filename="eco-wash-report.xlsx"')
+  .send(Buffer.from(bytes));
+});
+
 app.setErrorHandler((err,req,reply)=>{
  req.log.error(err);
  if(err instanceof ZodError) return reply.code(400).send({error:'VALIDATION_ERROR',issues:err.flatten()});
