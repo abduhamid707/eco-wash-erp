@@ -17,7 +17,7 @@ const toText=(value:unknown):string=>{
  return String(value).trim();
 };
 const value=(ws:ExcelJS.Worksheet,row:number,col:number)=>toText(ws.getRow(row).getCell(col).value);
-const number=(v:string)=>{const normalized=v.replace(/\s/g,'').replace(',','.');const n=Number(normalized);return Number.isFinite(n)?n:null;};
+const number=(v:string)=>{const normalized=v.replace(/\s/g,'').replace(',','.');if(!normalized)return null;const n=Number(normalized);return Number.isFinite(n)?n:null;};
 const date=(v:string)=>{const n=number(v);if(n&&n>30000&&n<90000){return new Date(Math.round((n-25569)*86400000)).toISOString().slice(0,10);}return v;};
 const safe=(text:string)=>text.toUpperCase().replace(/[^A-Z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,48)||'UNKNOWN';
 const isTotal=(n:string)=>/^(jami|itogo|total|summa|остаток|qoldiq)/i.test(n.trim());
@@ -78,14 +78,14 @@ if(debtSheet)for(let c=2;c<=debtSheet.columnCount;c++){
  }
 }
 put('Diler qarzi nomzod',['Viloyat dileri','Uning qarzi','Bizning qarz','Sana','Tekshiruv'],dealer);
-const spend=expenses.worksheets.getItemAt(0),spends:Array<Array<string|number>>=[];
+const spend=expenses.worksheets[0],spends:Array<Array<string|number>>=[];
 for(let r=1;r<=spend.rowCount;r++)for(const c of [2,8]){
  const title=value(spend,r,c),amount=value(spend,r,c+1);
  if(!title||!amount||number(amount)===null||isTotal(title))continue;
  spends.push([title,amount,'Sana va valyuta tekshirilsin']);
 }
 put('Xarajat nomzod',['Xarajat','Summa','Izoh'],spends);
-const regionSheet=regions.worksheets.getItemAt(0),regionRows:Array<Array<string|number>>=[];
+const regionSheet=regions.worksheets[0],regionRows:Array<Array<string|number>>=[];
 for(let c=2;c<=regionSheet.columnCount;c++){
  const region=value(regionSheet,2,c);
  if(!region||number(region)!==null||region.toLowerCase().includes('jami'))continue;
@@ -97,7 +97,7 @@ for(let c=2;c<=regionSheet.columnCount;c++){
  }
 }
 put('Viloyat yuklari',['Viloyat','Sana','Mahsulot','Qop','Narx','Jami','Ogohlantirish'],regionRows);
-const recipeSheet=recipes.worksheets.getItemAt(0);
+const recipeSheet=recipes.worksheets[0];
 put('Retsept manbasi',['Manba','Izoh','Holat'],[['Hisob k.xlsx',recipeSheet.name,'Foizlar, sarf va mahsulot koeffitsiyentlari qo‘lda tasdiqlansin']]);
 const candidates:Array<Array<string|number>>=[];
 const unique=new Set<string>();

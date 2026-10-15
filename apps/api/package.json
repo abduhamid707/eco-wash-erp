@@ -10,7 +10,8 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "test": "node --test",
-    "bootstrap": "tsx src/bootstrap.ts"
+    "bootstrap": "tsx src/bootstrap.ts",
+    "legacy:review": "tsx src/legacy-review.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.2",
