@@ -571,12 +571,16 @@ app.get('/audit/reconciliation', {preHandler:gate(['OWNER'])}, async()=>{
 });
 
 app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{
- const [products,dealers,accounts,ops,suppliers]=await Promise.all([
+ const [products,dealers,accounts,ops,suppliers,employees,attendance,payroll,recipes]=await Promise.all([
   prisma.product.findMany({orderBy:{name:'asc'}}),
   prisma.dealer.findMany({orderBy:{name:'asc'}}),
   prisma.moneyAccount.findMany({orderBy:{name:'asc'}}),
   prisma.operation.findMany({orderBy:{createdAt:'desc'},take:10000,include:{createdBy:{select:{name:true}}}}),
-  prisma.supplier.findMany({orderBy:{name:'asc'}})
+  prisma.supplier.findMany({orderBy:{name:'asc'}}),
+  prisma.employee.findMany({orderBy:{name:'asc'}}),
+  prisma.attendance.findMany({include:{employee:{select:{name:true}}},orderBy:{date:'desc'},take:10000}),
+  prisma.payrollPayment.findMany({include:{employee:{select:{name:true}}},orderBy:{createdAt:'desc'},take:10000}),
+  prisma.recipe.findMany({include:{product:{select:{name:true}},ingredients:{include:{material:{select:{name:true}}}}},orderBy:{createdAt:'desc'}})
  ]);
  const wb=new ExcelJS.Workbook();
  wb.creator='ECO WASH ERP';
@@ -594,6 +598,12 @@ app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,
  put('Diler qarzlari',['Diler','Viloyat','Qarz UZS'],dealers.map(x=>[x.name,x.region,x.receivable.toString()]));
  put('Pul hisoblari',['Hisob','Valyuta','Qoldiq'],accounts.map(x=>[x.name,x.currency,x.balance.toString()]));
  put('Operatsiyalar',['ID','Turi','Sana','Kiritgan','Status'],ops.map(x=>[x.id,x.type,x.occurredAt.toISOString(),x.createdBy.name,x.status]));
+
+ put('Ishchilar',['ID','Ism','Lavozim','Oylik UZS','Holat'],employees.map(x=>[x.id,x.name,x.position??'',x.monthlySalary.toString(),x.active?'Faol':'Nofaol']));
+ put('Davomat',['Sana','Ishchi','Ishladi','Izoh'],attendance.map(x=>[x.date.toISOString().slice(0,10),x.employee.name,x.worked?'Ha':'Yo‘q',x.note??'']));
+ put('Oylik va avans',['Ishchi','Oy','Turi','Summa UZS','Sana'],payroll.map(x=>[x.employee.name,x.month,x.type,x.amount.toString(),x.createdAt.toISOString()]));
+ put('Retseptlar',['Mahsulot','Versiya','Chiqish miqdori','Xomashyo','Miqdor','Faol'],recipes.flatMap(x=>x.ingredients.map(y=>[x.product.name,String(x.version),x.outputQuantity.toString(),y.material.name,y.quantity.toString(),x.active?'Ha':'Yo‘q'])));
+
  const bytes=await wb.xlsx.writeBuffer();
  return reply.header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
   .header('Content-Disposition','attachment; filename="eco-wash-report.xlsx"')
