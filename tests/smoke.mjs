@@ -114,6 +114,19 @@ const costRow=costRows.recipes.find(x=>x.recipeId===recipe.id);
 assert.equal(costRow.unitRawCost,'7.50');
 assert.equal(costRows.officialProfit,false);
 
+
+const rawAverage=await api('/products','POST',{sku:'RAW-AVG-CI',name:'Moving cost raw',unit:'kg',isRaw:true});
+const finishedAverage=await api('/products','POST',{sku:'FIN-AVG-CI',name:'Moving cost finished',unit:'qop',isRaw:false});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'STOCK_RECEIPT',productId:rawAverage.id,quantity:'10',unitCost:'4',occurredAt:when}});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'STOCK_RECEIPT',productId:rawAverage.id,quantity:'10',unitCost:'6',occurredAt:when}});
+const avgRaw=(await api('/products')).find(x=>x.id===rawAverage.id);
+assert.equal(Number(avgRaw.averageCost),5);
+const averageRecipe=await api('/recipes','POST',{productId:finishedAverage.id,outputQuantity:'1',ingredients:[{materialId:rawAverage.id,quantity:'2'}]});
+await api('/operations','POST',{idempotencyKey:uuid(),command:{type:'PRODUCTION',recipeId:averageRecipe.id,batches:'1',occurredAt:when}});
+const avgFinished=(await api('/products')).find(x=>x.id===finishedAverage.id);
+assert.equal(Number(avgFinished.averageCost),10);
+console.log('PASS: weighted-average input and production costs');
+
 const closed=await api('/periods/close','POST',{month:'2026-10',confirm:'DAVRNI YOPISHNI TASDIQLAYMAN',note:'CI integration validation'});
 assert.equal(closed.month,'2026-10');
 const late=await fetch(base+'/operations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({idempotencyKey:uuid(),command:{type:'CASH_RECEIPT',accountId:account.id,amount:'1',occurredAt:'2026-10-14T13:00:00.000Z'}})});
