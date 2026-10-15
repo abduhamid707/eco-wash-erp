@@ -521,14 +521,29 @@ app.get('/reports/summary', {preHandler:gate(financeRoles)}, async(req)=>{
  const end=new Date(q.to+'T00:00:00.000Z');
  if(!Number.isFinite(start.getTime())||!Number.isFinite(end.getTime())||start>end) insufficient('INVALID_DATE_RANGE');
  end.setUTCDate(end.getUTCDate()+1);
+
  const records=await prisma.operation.findMany({where:{occurredAt:{gte:start,lt:end},status:'POSTED'},select:{type:true,metadata:true}});
+ const returns=records.filter(r=>r.type==='DEALER_RETURN').map(r=>(r.metadata as {shipmentId?:string})?.shipmentId).filter((v):v is string=>!!v);
+ const shipments=await prisma.operation.findMany({where:{id:{in:returns}},select:{id:true,metadata:true}});
+ const shipmentById=new Map(shipments.map(r=>[r.id,r.metadata as {unitPrice?:string}]));
  const totals:Record<string,Prisma.Decimal>={};
  for(const op of records){
-  const c=op.metadata as {quantity?:string;unitPrice?:string;amount?:string;type?:string};
-  const sum=op.type==='SHIPMENT' ? dec(c.quantity??'0').mul(c.unitPrice??'0') : dec(c.amount??'0');
+  const c=op.metadata as {quantity?:string;unitPrice?:string;amount?:string;shipmentId?:string}|null;
+  if(!c)continue;
+  let sum=dec('0');
+  if(op.type==='SHIPMENT')sum=dec(c.quantity??'0').mul(c.unitPrice??'0');
+  else if(op.type==='DEALER_RETURN')sum=dec(c.quantity??'0').mul(shipmentById.get(c.shipmentId??'')?.unitPrice??'0').neg();
+  else if(c.amount)sum=dec(c.amount);
   totals[op.type]=(totals[op.type]??dec('0')).add(sum);
  }
- return {from:q.from,to:q.to,operations:records.length,totals:Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,v.toString()])),note:'Cash receipts are not automatically sales; this is operational turnover, not net profit.'};
+ const grossSales=totals.SHIPMENT??dec('0');
+ const returnedValue=totals.DEALER_RETURN??dec('0');
+ return {
+  from:q.from,to:q.to,operations:records.length,
+  totals:Object.fromEntries(Object.entries(totals).map(([k,v])=>[k,v.toString()])),
+  grossSales:grossSales.toFixed(2),salesReturns:returnedValue.toFixed(2),netSales:grossSales.add(returnedValue).toFixed(2),
+  note:'Sales minus returned goods, not net profit. Cash receipts and debt repayments are not additional sales.'
+ };
 });
 
 app.get('/audit/reconciliation', {preHandler:gate(['OWNER'])}, async()=>{
