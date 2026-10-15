@@ -114,3 +114,8 @@ assert.equal(late.status,409);
 const final=await api('/audit/reconciliation');
 assert.equal(final.ok,true);
 console.log('PASS: recipe cost estimate, accounting-period close and reconciliation');
+
+const turn=await api('/reports/summary?from=2026-10-01&to=2026-10-31');
+assert.equal(turn.salesReturns,'-100.00');
+assert.equal(turn.netSales,'300.00');
+console.log('PASS: returned goods reduce net sales');
