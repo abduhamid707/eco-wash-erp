@@ -136,6 +136,12 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   const previous=await tx.operation.findUnique({where:{idempotencyKey:b.idempotencyKey}});
   if(previous){if(previous.requestHash!==hash) insufficient('IDEMPOTENCY_KEY_REUSED'); return previous;}
   const c=b.command;
+  const lockedPeriod=await tx.accountingPeriod.findUnique({where:{month:c.occurredAt.slice(0,7)}});
+  if(lockedPeriod) insufficient('ACCOUNTING_PERIOD_CLOSED');
+  if(c.type==='VOID_OPERATION'){
+   const reversed=await tx.operation.findUnique({where:{id:c.targetId},select:{occurredAt:true}});
+   if(reversed && await tx.accountingPeriod.findUnique({where:{month:reversed.occurredAt.toISOString().slice(0,7)}})) insufficient('ORIGINAL_PERIOD_CLOSED');
+  }
   if(c.type==='ACCOUNT_TRANSFER' && c.fromAccountId===c.toAccountId) insufficient('SAME_ACCOUNT');
   const dealerId='dealerId' in c ? c.dealerId : undefined;
   const supplierId='supplierId' in c ? c.supplierId : undefined;

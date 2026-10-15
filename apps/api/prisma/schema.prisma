@@ -188,3 +188,11 @@ model SupplierEntry {
  amount Decimal @db.Decimal(20,2)
  @@index([supplierId])
 }
+
+model AccountingPeriod {
+ id String @id @default(uuid())
+ month String @unique
+ closedAt DateTime @default(now())
+ closedById String
+ closingNote String?
+}
