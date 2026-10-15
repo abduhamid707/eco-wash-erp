@@ -61,6 +61,46 @@ app.post('/auth/login', async (req, reply) => {
  if (!user?.active || !(await bcrypt.compare(b.password,user.passwordHash))) return reply.code(401).send({ error: 'INVALID_CREDENTIALS' });
  return { token: app.jwt.sign({ id:user.id, role:user.role }), user: {id:user.id,name:user.name,role:user.role} };
 });
+
+app.get('/users', {preHandler:gate(['OWNER'])}, async()=>prisma.user.findMany({
+ select:{id:true,name:true,login:true,role:true,active:true,createdAt:true},
+ orderBy:{createdAt:'desc'}
+}));
+app.post('/users', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
+ const b=z.object({
+  name:z.string().min(2).max(120),
+  login:z.string().min(3).max(80).regex(/^[a-zA-Z0-9_.-]+$/),
+  password:z.string().min(12).max(200),
+  role:z.enum(['OWNER','MANAGER','ATTENDANCE','WAREHOUSE'])
+ }).parse(req.body);
+ const saved=await prisma.$transaction(async tx=>{
+  const u=await tx.user.create({data:{name:b.name,login:b.login,role:b.role,passwordHash:await bcrypt.hash(b.password,12)}});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'USER_CREATE',entityType:'User',entityId:u.id,after:{name:u.name,login:u.login,role:u.role}}});
+  return u;
+ });
+ return reply.code(201).send({id:saved.id,name:saved.name,login:saved.login,role:saved.role,active:saved.active});
+});
+app.patch('/users/:id', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
+ const params=z.object({id}).parse(req.params);
+ const body=z.object({active:z.boolean().optional(),role:z.enum(['OWNER','MANAGER','ATTENDANCE','WAREHOUSE']).optional(),password:z.string().min(12).max(200).optional()}).refine(x=>Object.keys(x).length>0).parse(req.body);
+ if(params.id===req.session!.id && (body.active===false || (body.role && body.role!=='OWNER')))return reply.code(409).send({error:'CANNOT_DISABLE_SELF'});
+ const saved=await prisma.$transaction(async tx=>{
+  const current=await tx.user.findUnique({where:{id:params.id}});
+  if(!current)return null;
+  if(current.role==='OWNER'&&(body.active===false ||(body.role&&body.role!=='OWNER'))){
+   const other=await tx.user.count({where:{role:'OWNER',active:true,id:{not:current.id}}});
+   if(other===0)insufficient('LAST_OWNER_REQUIRED');
+  }
+  const updated=await tx.user.update({where:{id:params.id},data:{
+   active:body.active,role:body.role,passwordHash:body.password?await bcrypt.hash(body.password,12):undefined
+  }});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'USER_UPDATE',entityType:'User',entityId:params.id,before:{role:current.role,active:current.active},after:{role:updated.role,active:updated.active,passwordChanged:!!body.password}}});
+  return updated;
+ });
+ if(!saved)return reply.code(404).send({error:'USER_NOT_FOUND'});
+ return {id:saved.id,login:saved.login,name:saved.name,role:saved.role,active:saved.active};
+});
+
 app.get('/me', { preHandler: gate(allRoles) }, async req => prisma.user.findUnique({where:{id:req.session!.id},select:{id:true,name:true,role:true}}));
 app.get('/products', { preHandler: gate(allRoles) }, async () => prisma.product.findMany({orderBy:{name:'asc'}}).then(a=>a.map(x=>({...x,stock:x.stock.toString()}))));
 app.post('/products', { preHandler: gate(stockRoles) }, async (req,reply)=>{
