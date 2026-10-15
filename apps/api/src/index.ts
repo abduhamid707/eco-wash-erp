@@ -174,7 +174,8 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   
   if(c.type==='INVENTORY_ADJUSTMENT'){
    const current=await tx.product.findUnique({where:{id:c.productId}});
-   if(!current||!current.active) insufficient('PRODUCT_NOT_FOUND');
+   if(!current) throw new Error('PRODUCT_NOT_FOUND');
+   if(!current.active) insufficient('PRODUCT_INACTIVE');
    const difference=dec(c.actualQuantity).sub(current.stock);
    if(difference.isZero()) insufficient('NO_INVENTORY_DIFFERENCE');
    await stock(c.productId,difference);
