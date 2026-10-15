@@ -11,8 +11,8 @@ import { StatementsPanel } from './StatementsPanel';
 import { PendingPanel } from './PendingPanel';
 type Item={id:string;name:string;[key:string]:unknown};
 type Snapshot={products:Item[];dealers:Item[];accounts:Item[];suppliers:Item[];operationCount:number};
-type CommandType='ACCOUNT_OPENING'|'INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
-const labels:Record<CommandType,string>={ACCOUNT_OPENING:'Boshlang‘ich kassa qoldig‘i (rahbar)',INVENTORY_ADJUSTMENT:'Inventarizatsiya (rahbar)',VOID_OPERATION:'Operatsiyani bekor qilish (rahbar)',DEALER_RETURN:'Diler qaytargan mahsulot',SUPPLIER_RECEIPT:'Yetkazib beruvchidan xomashyo',SUPPLIER_PAYMENT:'Yetkazib beruvchiga to‘lov',DEALER_OPENING:'Diler boshlang‘ich qarzi',SUPPLIER_OPENING:'Yetkazib beruvchi boshlang‘ich qarzi',STOCK_RECEIPT:'Xomashyo / mahsulot kirimi',PRODUCTION:'Ishlab chiqarish',SHIPMENT:'Dilerga jo‘natma',DEALER_PAYMENT:'Diler to‘lovi',EXPENSE:'Xarajat',CASH_RECEIPT:'Pul kirimi',ACCOUNT_TRANSFER:'Hisoblararo o‘tkazma'};
+type CommandType='ACCOUNT_OPENING'|'INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_RETURN'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
+const labels:Record<CommandType,string>={ACCOUNT_OPENING:'Boshlang‘ich kassa qoldig‘i (rahbar)',INVENTORY_ADJUSTMENT:'Inventarizatsiya (rahbar)',VOID_OPERATION:'Operatsiyani bekor qilish (rahbar)',DEALER_RETURN:'Diler qaytargan mahsulot',SUPPLIER_RECEIPT:'Yetkazib beruvchidan xomashyo',SUPPLIER_RETURN:'Yetkazib beruvchiga qaytarish',SUPPLIER_PAYMENT:'Yetkazib beruvchiga to‘lov',DEALER_OPENING:'Diler boshlang‘ich qarzi',SUPPLIER_OPENING:'Yetkazib beruvchi boshlang‘ich qarzi',STOCK_RECEIPT:'Xomashyo / mahsulot kirimi',PRODUCTION:'Ishlab chiqarish',SHIPMENT:'Dilerga jo‘natma',DEALER_PAYMENT:'Diler to‘lovi',EXPENSE:'Xarajat',CASH_RECEIPT:'Pul kirimi',ACCOUNT_TRANSFER:'Hisoblararo o‘tkazma'};
 function App(){
  const [token,setToken]=useState(sessionStorage.getItem('eco_token')||'');
  const [userId,setUserId]=useState(sessionStorage.getItem('eco_user_id')||'');
@@ -67,6 +67,7 @@ function App(){
   VOID_OPERATION:[['targetId','Bekor qilinadigan operatsiya ID','text']],
   DEALER_RETURN:[['shipmentId','Avvalgi jo‘natma ID','text'],['quantity','Qaytgan miqdor','number']],
   SUPPLIER_RECEIPT:[['supplierId','Yetkazib beruvchi','suppliers'],['productId','Xomashyo','products'],['quantity','Miqdor','number'],['unitCost','Birlik tannarxi','number']],
+  SUPPLIER_RETURN:[['purchaseId','Xomashyo xaridi operatsiyasi ID','text'],['quantity','Qaytarilayotgan miqdor','number']],
   SUPPLIER_PAYMENT:[['supplierId','Yetkazib beruvchi','suppliers'],['accountId','Pul hisobi','accounts'],['amount','To‘lov summasi','number']],
   DEALER_OPENING:[['dealerId','Diler','dealers'],['amount','Boshlang‘ich qarz','number']],
   SUPPLIER_OPENING:[['supplierId','Yetkazib beruvchi','suppliers'],['amount','Boshlang‘ich qarz','number']],
