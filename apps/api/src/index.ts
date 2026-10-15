@@ -583,6 +583,41 @@ app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,
   .send(Buffer.from(bytes));
 });
 
+
+app.get('/costing/recipe-estimates', {preHandler:gate(financeRoles)}, async()=>{
+ const recipes=await prisma.recipe.findMany({where:{active:true},include:{product:{select:{name:true}},ingredients:{include:{material:{select:{name:true,unit:true}}}}}});
+ const estimates=[];
+ for(const recipe of recipes){
+  let batchCost=dec('0');
+  const missing:string[]=[];
+  const breakdown=[];
+  for(const line of recipe.ingredients){
+   const latest=await prisma.inventoryMovement.findFirst({where:{productId:line.materialId,quantity:{gt:0},unitCost:{not:null},operation:{status:'POSTED'}},orderBy:{operation:{createdAt:'desc'}}});
+   if(!latest?.unitCost){missing.push(line.material.name);continue;}
+   const extended=latest.unitCost.mul(line.quantity);
+   batchCost=batchCost.add(extended);
+   breakdown.push({material:line.material.name,unit:line.material.unit,quantity:line.quantity.toString(),lastPurchaseUnitCost:latest.unitCost.toString(),extendedCost:extended.toFixed(2)});
+  }
+  estimates.push({recipeId:recipe.id,productId:recipe.productId,productName:recipe.product.name,version:recipe.version,outputQuantity:recipe.outputQuantity.toString(),complete:missing.length===0,missingCosts:missing,batchRawCost:missing.length===0?batchCost.toFixed(2):null,unitRawCost:missing.length===0?batchCost.div(recipe.outputQuantity).toFixed(2):null,breakdown});
+ }
+ return {method:'Latest recorded raw-material purchase price (estimate only)',currency:'UZS',includesLabor:false,includesTransport:false,includesOverhead:false,officialProfit:false,recipes:estimates};
+});
+app.get('/periods', {preHandler:gate(financeRoles)}, async()=>prisma.accountingPeriod.findMany({orderBy:{month:'desc'}}));
+app.post('/periods/close', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
+ const b=z.object({month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),note:z.string().max(500).optional(),confirm:z.literal('DAVRNI YOPISHNI TASDIQLAYMAN')}).parse(req.body);
+ const start=new Date(b.month+'-01T00:00:00.000Z');
+ if(!Number.isFinite(start.getTime())||start>new Date())return reply.code(409).send({error:'FUTURE_PERIOD'});
+ const closed=await prisma.$transaction(async tx=>{
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773301)`;
+  const previous=await tx.accountingPeriod.findUnique({where:{month:b.month}});
+  if(previous)return previous;
+  const period=await tx.accountingPeriod.create({data:{month:b.month,closingNote:b.note,closedById:req.session!.id}});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'CLOSE_PERIOD',entityType:'AccountingPeriod',entityId:period.id,after:{month:b.month,note:b.note??''}}});
+  return period;
+ },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+ return reply.code(201).send({id:closed.id,month:closed.month,closedAt:closed.closedAt});
+});
+
 app.setErrorHandler((err,req,reply)=>{
  req.log.error(err);
  if(err instanceof ZodError) return reply.code(400).send({error:'VALIDATION_ERROR',issues:err.flatten()});
