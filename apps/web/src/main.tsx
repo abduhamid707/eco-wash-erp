@@ -12,6 +12,7 @@ type CommandType='ACCOUNT_OPENING'|'INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEAL
 const labels:Record<CommandType,string>={ACCOUNT_OPENING:'Boshlang‘ich kassa qoldig‘i (rahbar)',INVENTORY_ADJUSTMENT:'Inventarizatsiya (rahbar)',VOID_OPERATION:'Operatsiyani bekor qilish (rahbar)',DEALER_RETURN:'Diler qaytargan mahsulot',SUPPLIER_RECEIPT:'Yetkazib beruvchidan xomashyo',SUPPLIER_PAYMENT:'Yetkazib beruvchiga to‘lov',DEALER_OPENING:'Diler boshlang‘ich qarzi',SUPPLIER_OPENING:'Yetkazib beruvchi boshlang‘ich qarzi',STOCK_RECEIPT:'Xomashyo / mahsulot kirimi',PRODUCTION:'Ishlab chiqarish',SHIPMENT:'Dilerga jo‘natma',DEALER_PAYMENT:'Diler to‘lovi',EXPENSE:'Xarajat',CASH_RECEIPT:'Pul kirimi',ACCOUNT_TRANSFER:'Hisoblararo o‘tkazma'};
 function App(){
  const [token,setToken]=useState(sessionStorage.getItem('eco_token')||'');
+ const [userId,setUserId]=useState(sessionStorage.getItem('eco_user_id')||'');
  const [login,setLogin]=useState(''),[password,setPassword]=useState('');
  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [data,setData]=useState<Snapshot|null>(null),[tab,setTab]=useState<'dashboard'|'operations'|'catalog'|'staff'|'recipes'|'reports'|'import'>('dashboard');
@@ -24,8 +25,8 @@ function App(){
  const [message,setMessage]=useState('');
  const [pending,setPending]=useState(0);
  const [syncing,setSyncing]=useState(false);
- const updatePending=async()=>setPending((await listPending()).length);
- useEffect(()=>{void updatePending();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});},[]);
+ const updatePending=async()=>setPending(userId?(await listPending(userId)).length:0);
+ useEffect(()=>{void updatePending();if('serviceWorker' in navigator)navigator.serviceWorker.register('/sw.js').catch(()=>{});},[userId]);
  const api=async(path:string,method='GET',payload?:unknown)=>{
   const response=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:payload?JSON.stringify(payload):undefined});
   const json=await response.json();
@@ -38,12 +39,13 @@ function App(){
  async function refresh(){
   try{const snapshot=await api('/dashboard');setData(snapshot);const [operations,recipeList]=await Promise.allSettled([api('/operations'),api('/recipes')]);setHistory(operations.status==='fulfilled'?operations.value:[]);setRecipes(recipeList.status==='fulfilled'?recipeList.value.map((r:Item)=>({...r,name:String(r.productName)+' v'+String(r.version)+' '+(r.active?'':'(arxiv)')})):[]);}catch(e){setError(String(e));}
  }
- useEffect(()=>{if(token)void refresh();},[token]);
+ useEffect(()=>{if(token){void api('/me').then(u=>{sessionStorage.setItem('eco_user_id',u.id);setUserId(u.id);}).catch(()=>{setError('Sessiyani tekshirish uchun internet kerak.');});void refresh();}},[token]);
  const set=(name:string,v:string)=>setValues(s=>({...s,[name]:v}));
  async function syncPending(){
   if(!navigator.onLine){setError('Internet mavjud emas');return;}
   setSyncing(true);setError('');let synced=0;let failed=0;
-  for(const item of await listPending()){
+  if(!userId){setError('Foydalanuvchi sessiyasi tekshirilmagan');setSyncing(false);return;}
+  for(const item of await listPending(userId)){
    try{await api('/operations','POST',item.body);await removePending(item.key);synced++;}
    catch(e){failed++;await markPendingError(item.key,String(e));}
   }
@@ -53,7 +55,7 @@ function App(){
  }
  async function signIn(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');
-  try{const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password})});const json=await response.json();if(!response.ok)throw Error('Login yoki parol xato');sessionStorage.setItem('eco_token',json.token);setToken(json.token);setPassword('');}catch(e){setError(String(e));}finally{setBusy(false);}
+  try{const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password})});const json=await response.json();if(!response.ok)throw Error('Login yoki parol xato');sessionStorage.setItem('eco_token',json.token);sessionStorage.setItem('eco_user_id',json.user.id);setUserId(json.user.id);setToken(json.token);setPassword('');}catch(e){setError(String(e));}finally{setBusy(false);}
  }
  const fields:Record<CommandType,Array<[string,string,string]>>={ACCOUNT_OPENING:[['accountId','Pul hisobi','accounts'],['amount','Tasdiqlangan boshlang‘ich qoldiq','number']],INVENTORY_ADJUSTMENT:[['productId','Mahsulot / xomashyo','products'],['actualQuantity','Sanab chiqilgan haqiqiy qoldiq','nonnegative'],['reason','Farq sababi','text']],
   VOID_OPERATION:[['targetId','Bekor qilinadigan operatsiya ID','text']],
@@ -77,7 +79,7 @@ function App(){
   const payload={idempotencyKey:crypto.randomUUID(),command};
   try{
    if(!navigator.onLine){
-    await addPending(payload.idempotencyKey,payload);setValues({});
+    if(!userId)throw new Error('Offline yozish uchun foydalanuvchi tekshirilmagan');await addPending(payload.idempotencyKey,payload,userId);setValues({});
     setMessage('Qurilmada saqlandi. Server hali tasdiqlamadi.');await updatePending();return;
    }
    try{await api('/operations','POST',payload);}
@@ -101,7 +103,7 @@ function App(){
  };
  const n=(v:unknown)=>Number(v||0).toLocaleString('en-US',{maximumFractionDigits:2});
  if(!token)return <main className="login-page"><form className="login" onSubmit={signIn}><div className="logo">ECO WASH <span>ERP</span></div><h2>Tizimga kirish</h2><p>Korxona boshqaruvi</p><label>Login<input value={login} onChange={e=>setLogin(e.target.value)} autoComplete="username" required/></label><label>Parol<input type="password" value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" required/></label>{error&&<p className="error">{error}</p>}<button disabled={busy}>Kirish</button></form></main>;
- return <main className="app"><aside><div className="logo">ECO WASH <span>ERP</span></div><p>Korxona boshqaruvi</p><nav><button className={tab==='dashboard'?'selected':''} onClick={()=>setTab('dashboard')}>◫ Bosh sahifa</button><button className={tab==='operations'?'selected':''} onClick={()=>setTab('operations')}>↗ Operatsiyalar</button><button className={tab==='catalog'?'selected':''} onClick={()=>setTab('catalog')}>▤ Ma’lumotnomalar</button><button className={tab==='recipes'?'selected':''} onClick={()=>setTab('recipes')}>⚙ Retseptlar</button><button className={tab==='staff'?'selected':''} onClick={()=>setTab('staff')}>♙ Ishchilar</button><button className={tab==='reports'?'selected':''} onClick={()=>setTab('reports')}>▤ Hisobotlar</button><button className={tab==='import'?'selected':''} onClick={()=>setTab('import')}>⇩ Excel import</button></nav><button className="logout" onClick={()=>{sessionStorage.removeItem('eco_token');setToken('');setData(null);}}>Chiqish</button></aside><section className="content"><div className="top"><div><p className="eyebrow">ECO WASH / ISH PANELI</p><h1>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Ishchilar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excelni ko‘chirish':'Ma’lumotnomalar'}</h1></div><div className="topactions"><button className="ghost" onClick={()=>void refresh()}>↻ Yangilash</button><button className="ghost" onClick={()=>void downloadExcel()}>↓ Excel</button><button className="ghost" disabled={!pending||syncing} onClick={()=>void syncPending()}>↥ Sinxronlash ({pending})</button></div></div>{error&&<div className="notice error">{error}</div>}{message&&<div className="notice success">{message}</div>}
+ return <main className="app"><aside><div className="logo">ECO WASH <span>ERP</span></div><p>Korxona boshqaruvi</p><nav><button className={tab==='dashboard'?'selected':''} onClick={()=>setTab('dashboard')}>◫ Bosh sahifa</button><button className={tab==='operations'?'selected':''} onClick={()=>setTab('operations')}>↗ Operatsiyalar</button><button className={tab==='catalog'?'selected':''} onClick={()=>setTab('catalog')}>▤ Ma’lumotnomalar</button><button className={tab==='recipes'?'selected':''} onClick={()=>setTab('recipes')}>⚙ Retseptlar</button><button className={tab==='staff'?'selected':''} onClick={()=>setTab('staff')}>♙ Ishchilar</button><button className={tab==='reports'?'selected':''} onClick={()=>setTab('reports')}>▤ Hisobotlar</button><button className={tab==='import'?'selected':''} onClick={()=>setTab('import')}>⇩ Excel import</button></nav><button className="logout" onClick={()=>{sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_user_id');setUserId('');setToken('');setData(null);}}>Chiqish</button></aside><section className="content"><div className="top"><div><p className="eyebrow">ECO WASH / ISH PANELI</p><h1>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Ishchilar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excelni ko‘chirish':'Ma’lumotnomalar'}</h1></div><div className="topactions"><button className="ghost" onClick={()=>void refresh()}>↻ Yangilash</button><button className="ghost" onClick={()=>void downloadExcel()}>↓ Excel</button><button className="ghost" disabled={!pending||syncing} onClick={()=>void syncPending()}>↥ Sinxronlash ({pending})</button></div></div>{error&&<div className="notice error">{error}</div>}{message&&<div className="notice success">{message}</div>}
  {tab==='dashboard'&&<><div className="stats"><article><small>Ombor pozitsiyalari</small><strong>{data?.products.length??'—'}</strong></article><article><small>Dilerlar</small><strong>{data?.dealers.length??'—'}</strong></article><article><small>Jami diler qarzi (UZS)</small><strong>{n(data?.dealers.reduce((a,b)=>a+Number(b.receivable),0))}</strong></article><article><small>Operatsiyalar</small><strong>{data?.operationCount??'—'}</strong></article></div><div className="columns"><div className="panel"><h2>Ombor qoldig‘i</h2><table><thead><tr><th>Mahsulot</th><th>Qoldiq</th></tr></thead><tbody>{data?.products.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.stock)} {String(x.unit)}</td></tr>)}</tbody></table></div><div className="panel"><h2>Diler qarzlari</h2><table><thead><tr><th>Diler</th><th>Qarz</th></tr></thead><tbody>{data?.dealers.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.receivable)}</td></tr>)}</tbody></table><h2>Pul hisoblari</h2><table><tbody>{data?.accounts.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.balance)} UZS</td></tr>)}</tbody></table></div></div></>}
  {tab==='operations'&&<div className="columns"><form className="panel form" onSubmit={saveOperation}><h2>Operatsiyani kiritish</h2><label>Amal turi<select value={kind} onChange={e=>{setKind(e.target.value as CommandType);setValues({});}}>{Object.entries(labels).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>{fields[kind].map(([key,title,type])=><label key={key}>{title}{['products','dealers','accounts','suppliers','recipes'].includes(type)?<select required value={values[key]||''} onChange={e=>set(key,e.target.value)}><option value="">Tanlang</option>{(type==='recipes'?recipes:((data?.[type as keyof Snapshot]||[]) as Item[])).map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select>:<input type={type==='nonnegative'?'number':type} min={type==='nonnegative'?'0':type==='number'?'0.0001':undefined} step={type==='number'||type==='nonnegative'?'any':undefined} required={!['unitCost','description'].includes(key)} value={values[key]||''} onChange={e=>set(key,e.target.value)}/>}</label>)}<button disabled={busy}>{busy?'Saqlanmoqda...':'Serverga saqlash'}</button><small className="muted">Offline yozuvlar faqat qurilmada saqlanadi; server tasdiqlamaguncha rasmiy qoldiq o‘zgarmaydi.</small></form><div className="panel"><h2>So‘nggi operatsiyalar</h2>{history.map(x=><div className="history" key={x.id}><b>{labels[x.type as CommandType]||x.type}</b><small title={x.id}>{new Date(x.createdAt).toLocaleString('uz-UZ')} · {x.id.slice(0,8)}...</small></div>)}</div></div>}
  {tab==='recipes'&&<RecipePanel api={api} products={data?.products||[]} onSaved={refresh}/>}
