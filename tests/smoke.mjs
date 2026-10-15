@@ -101,3 +101,16 @@ assert.equal(badPreview.invalid,1);
 const template=await fetch(base+'/import/template.xlsx',{headers:{Authorization:'Bearer '+token}});
 assert.equal(template.status,200);
 console.log('PASS: import validation, duplicate detection, template download');
+
+const costRows=await api('/costing/recipe-estimates');
+const costRow=costRows.recipes.find(x=>x.recipeId===recipe.id);
+assert.equal(costRow.unitRawCost,'7.50');
+assert.equal(costRows.officialProfit,false);
+
+const closed=await api('/periods/close','POST',{month:'2026-10',confirm:'DAVRNI YOPISHNI TASDIQLAYMAN',note:'CI integration validation'});
+assert.equal(closed.month,'2026-10');
+const late=await fetch(base+'/operations',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify({idempotencyKey:uuid(),command:{type:'CASH_RECEIPT',accountId:account.id,amount:'1',occurredAt:'2026-10-14T13:00:00.000Z'}})});
+assert.equal(late.status,409);
+const final=await api('/audit/reconciliation');
+assert.equal(final.ok,true);
+console.log('PASS: recipe cost estimate, accounting-period close and reconciliation');
