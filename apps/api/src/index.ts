@@ -291,6 +291,31 @@ app.get('/operations', { preHandler:gate(financeRoles) }, async req=>{
  const limit=Math.min(100,Number((req.query as Record<string,string>).limit)||30);
  return prisma.operation.findMany({take:limit,orderBy:{createdAt:'desc'},include:{createdBy:{select:{name:true}},movements:true,moneyEntries:true}});
 });
+
+app.get('/dashboard/trends', {preHandler:gate(financeRoles)}, async(req)=>{
+ const q=z.object({days:z.coerce.number().int().min(7).max(90).default(30)}).parse(req.query);
+ const today=new Date();
+ const start=new Date(Date.UTC(today.getUTCFullYear(),today.getUTCMonth(),today.getUTCDate()-q.days+1));
+ const records=await prisma.operation.findMany({
+  where:{occurredAt:{gte:start},status:'POSTED',type:{in:['PRODUCTION','SHIPMENT','DEALER_RETURN','EXPENSE','PAYROLL_ADVANCE','PAYROLL_SALARY']}},
+  select:{type:true,occurredAt:true,metadata:true}
+ });
+ const map=new Map<string,{date:string;productions:number;shipments:Prisma.Decimal;expenses:Prisma.Decimal}>();
+ for(let i=0;i<q.days;i++){const d=new Date(start);d.setUTCDate(d.getUTCDate()+i);const key=d.toISOString().slice(0,10);map.set(key,{date:key,productions:0,shipments:dec('0'),expenses:dec('0')});}
+ const returns=records.filter(r=>r.type==='DEALER_RETURN').map(r=>(r.metadata as {shipmentId?:string}|null)?.shipmentId).filter((x):x is string=>!!x);
+ const original=await prisma.operation.findMany({where:{id:{in:returns}},select:{id:true,metadata:true}});
+ const prices=new Map(original.map(r=>[r.id,(r.metadata as {unitPrice?:string}|null)?.unitPrice??'0']));
+ for(const item of records){
+  const day=map.get(item.occurredAt.toISOString().slice(0,10));if(!day)continue;
+  const m=item.metadata as {quantity?:string;unitPrice?:string;shipmentId?:string;amount?:string}|null;
+  if(item.type==='PRODUCTION')day.productions++;
+  if(item.type==='SHIPMENT')day.shipments=day.shipments.add(dec(m?.quantity??'0').mul(m?.unitPrice??'0'));
+  if(item.type==='DEALER_RETURN')day.shipments=day.shipments.sub(dec(m?.quantity??'0').mul(prices.get(m?.shipmentId??'')??'0'));
+  if(['EXPENSE','PAYROLL_ADVANCE','PAYROLL_SALARY'].includes(item.type))day.expenses=day.expenses.add(m?.amount??'0');
+ }
+ return {days:q.days,series:[...map.values()].map(d=>({date:d.date,productionBatches:d.productions,netSales:d.shipments.toFixed(2),cashExpenses:d.expenses.toFixed(2)})),note:'Net sales excludes returns; cash expense totals exclude supplier payments. Not a profit statement.'};
+});
+
 app.get('/dashboard', { preHandler: gate(allRoles) }, async(req)=>{
  const [products,dealers,accounts,operations,suppliers]=await Promise.all([
   prisma.product.findMany({select:{id:true,name:true,unit:true,stock:true,isRaw:true}}),
