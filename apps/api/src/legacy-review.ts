@@ -7,7 +7,7 @@ import { resolve, dirname, join } from 'node:path';
 const args=process.argv.slice(2);
 if(args.length<4){console.error('Usage: pnpm --filter @eco/api legacy:review <ECO_WASH_HISOBOT.xlsx> <Hisob_k.xlsx> <Viloyatlar_qarzi.xlsx> <Rasxod.xlsx> [output.xlsx]');process.exit(2);}
 for(const file of args.slice(0,4))if(!existsSync(file))throw new Error('File not found: '+file);
-const input=args.slice(0,4).map(resolve);
+const input=args.slice(0,4).map(x=>resolve(x));
 const output=resolve(args[4]||join(dirname(input[0]),'eco-wash-legacy-review.xlsx'));
 const toText=(value:unknown):string=>{
  if(value==null)return '';
