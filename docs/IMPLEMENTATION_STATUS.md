@@ -1,27 +1,22 @@
-# ECO WASH ERP — Implementation tracker
+# ECO WASH ERP — verified scope and remaining work
 
-## Implemented (code on main)
-- React admin interface with sign-in, operational forms, stock/dealer dashboard, reports, recipes, employees
-- Node.js API with Prisma/PostgreSQL, user roles, idempotency and atomic transaction posting
-- Product and raw-material registers, dealers, suppliers, money accounts
-- Material receipts, shipments, dealer debt and payments, supplier liability and payments
-- Versioned recipes and manufacturing postings
-- Expense, cash receipt, cash transfers and owner-managed opening balances
-- Reversal, dealer returns, stocktake adjustments and audit log
-- Employees, attendance, salary/advance payments
-- Excel multi-sheet export and period summary
-- IndexedDB pending queue and basic PWA shell
-- Docker beta stack and PostgreSQL smoke tests
+## GitHub implementation
+- React dashboard, modules for employees, recipes, operations, registers, finance reports, reconciliation, import preview
+- Fastify / Prisma / PostgreSQL with inventory and money transaction posting
+- Dealer debts, supplier liabilities, payments, returns and reversible operations
+- Manufacturing BOM versioning and staff attendance/advances
+- Excel export plus import **template and dry-run validation** — not actual import
+- PWA basic caching and IndexedDB offline pending queue tied to originating authenticated user
+- Docker beta stack, CI compilation + database smoke checks
 
-## Not complete / not verified for real business use
-- Legacy Excel import and owner-approved opening balances
-- Full manufacturing cost / weighted-average stock valuation / actual profit statement
-- Transport allocation, product variants, supplier returns, partial allocation of payments
-- Automated reversal workflow for payroll / close accounting periods
-- Full RBAC at UI-level and secure offline sessions on shared devices
-- Network-conflict resolution UX, robust offline retry/auth refresh and encrypted local storage
-- Production migrations, backup/restore, monitoring, automated browser tests, deployment hardening
-- Real-user UAT, local inspection and end-to-end acceptance against ECO WASH historical ledgers
+## Still required before sign-off
+- Genuine, approved Excel migration into database (not implemented); mapping existing inconsistent labels and dates
+- Product costing and trustworthy profit/loss statement (not implemented)
+- Business acceptance of exchange rates, recipes, labor and transport treatment
+- User management screens, detailed permissions, owner approval and period closing
+- Security review of service-worker cache, IndexedDB data at rest, offline login and session expiry
+- Retry queue conflict resolution and recovery on unstable internet/shared devices
+- Full migrations, backup and restore drills, monitoring and production deployment
+- Local walkthrough, UI/UX review, UAT and production-grade tests
 
-## Policy
-Do not claim production readiness. All opening values and finance/cost rules require owner sign-off. CI verifies a subset of invariants, not exhaustive correctness.
+**No claim of completion.** Compilation and smoke tests verify specific behaviors but cannot replace real ECO WASH ledger reconciliation and operator acceptance.

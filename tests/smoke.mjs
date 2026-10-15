@@ -86,3 +86,18 @@ assert.equal((await api('/dashboard')).accounts.find(a=>a.id===openingAccount.id
 const finalCheck=await api('/audit/reconciliation');
 assert.equal(finalCheck.ok,true);
 console.log('PASS: opening balances reconcile');
+
+const migrationRows=[
+ {kind:'PRODUCT',code:'R1',name:'Raw material',region:'',unit:'kg',value:'',isRaw:'true'},
+ {kind:'DEALER',code:'',name:'Samarqand test',region:'Samarqand',unit:'',value:'',isRaw:''},
+ {kind:'OPENING_CASH',code:'',name:'Test kassa',region:'',unit:'',value:'1000',isRaw:''}
+];
+const dryRun=await api('/import/preview','POST',{rows:migrationRows});
+assert.equal(dryRun.valid,3);
+assert.equal(dryRun.invalid,0);
+assert.equal(dryRun.previewOnly,true);
+const badPreview=await api('/import/preview','POST',{rows:[migrationRows[0],migrationRows[0]]});
+assert.equal(badPreview.invalid,1);
+const template=await fetch(base+'/import/template.xlsx',{headers:{Authorization:'Bearer '+token}});
+assert.equal(template.status,200);
+console.log('PASS: import validation, duplicate detection, template download');
