@@ -309,9 +309,10 @@ app.post('/recipes', {preHandler:gate(financeRoles)}, async(req,reply)=>{
 });
 
 
-app.get('/employees', {preHandler:gate(allRoles)}, async()=>{
- const staff=await prisma.employee.findMany({orderBy:{name:'asc'},include:{attendance:true,payroll:true}});
- return staff.map(s=>({id:s.id,name:s.name,position:s.position,monthlySalary:s.monthlySalary.toString(),active:s.active,attendanceCount:s.attendance.length}));
+app.get('/employees', {preHandler:gate(['OWNER','MANAGER','ATTENDANCE'])}, async req=>{
+ const finance=financeRoles.includes(req.session!.role);
+ const staff=await prisma.employee.findMany({orderBy:{name:'asc'}});
+ return staff.map(s=>({id:s.id,name:s.name,position:s.position,active:s.active,...(finance?{monthlySalary:s.monthlySalary.toString()}:{})}));
 });
 app.post('/employees', {preHandler:gate(financeRoles)}, async(req,reply)=>{
  const b=z.object({name:z.string().min(2),position:z.string().max(80).optional(),monthlySalary:amount}).parse(req.body);
@@ -319,7 +320,7 @@ app.post('/employees', {preHandler:gate(financeRoles)}, async(req,reply)=>{
  await prisma.auditLog.create({data:{actorId:req.session!.id,action:'CREATE',entityType:'Employee',entityId:record.id}});
  return reply.code(201).send({id:record.id});
 });
-app.get('/attendance', {preHandler:gate(allRoles)}, async(req)=>{
+app.get('/attendance', {preHandler:gate(['OWNER','MANAGER','ATTENDANCE'])}, async(req)=>{
  const q=z.object({month:z.string().regex(/^\d{4}-\d{2}$/)}).parse(req.query);
  const start=new Date(q.month+'-01T00:00:00.000Z');
  const end=new Date(Date.UTC(start.getUTCFullYear(),start.getUTCMonth()+1,1));
