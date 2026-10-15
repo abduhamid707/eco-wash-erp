@@ -332,6 +332,8 @@ app.post('/attendance', {preHandler:gate(['OWNER','MANAGER','ATTENDANCE'])}, asy
  const person=await prisma.employee.findUnique({where:{id:b.employeeId}});
  if(!person?.active)return reply.code(409).send({error:'EMPLOYEE_NOT_ACTIVE'});
  const row=await prisma.$transaction(async tx=>{
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773301)`;
+  if(await tx.accountingPeriod.findUnique({where:{month:b.date.slice(0,7)}})) insufficient('ACCOUNTING_PERIOD_CLOSED');
   const saved=await tx.attendance.upsert({where:{employeeId_date:{employeeId:b.employeeId,date:dateValue}},update:{worked:b.worked,note:b.note},create:{employeeId:b.employeeId,date:dateValue,worked:b.worked,note:b.note}});
   await tx.auditLog.create({data:{actorId:req.session!.id,action:'ATTENDANCE_SET',entityType:'Attendance',entityId:saved.id,after:{worked:b.worked,date:b.date}}});
   return saved;
@@ -350,9 +352,10 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
  const b=z.object({idempotencyKey:id,employeeId:id,accountId:id,month:z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),type:z.enum(['ADVANCE','SALARY']),amount}).parse(req.body);
  const hash=createHash('sha256').update(JSON.stringify({...b,idempotencyKey:undefined})).digest('hex');
  const response=await prisma.$transaction(async tx=>{
-  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773303)`;
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773301)`;
   const prior=await tx.payrollPayment.findUnique({where:{idempotencyKey:b.idempotencyKey}});
   if(prior){if(prior.requestHash!==hash) insufficient('IDEMPOTENCY_KEY_REUSED');return prior;}
+  if(await tx.accountingPeriod.findUnique({where:{month:b.month}})) insufficient('ACCOUNTING_PERIOD_CLOSED');
   const employee=await tx.employee.findUnique({where:{id:b.employeeId}});
   if(!employee) throw new Error('EMPLOYEE_NOT_FOUND');
   if(!employee.active) insufficient('EMPLOYEE_INACTIVE');
