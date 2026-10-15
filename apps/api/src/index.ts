@@ -326,6 +326,70 @@ app.post('/payroll/payments', {preHandler:gate(financeRoles)}, async(req,reply)=
 
 
 
+
+const legacyKinds=['PRODUCT','DEALER','SUPPLIER','ACCOUNT','OPENING_STOCK','OPENING_DEALER','OPENING_SUPPLIER','OPENING_CASH'] as const;
+const legacyRow=z.object({
+ kind:z.enum(legacyKinds),
+ code:z.string().max(120).default(''),
+ name:z.string().max(200).default(''),
+ region:z.string().max(120).default(''),
+ unit:z.string().max(30).default(''),
+ value:z.string().max(40).default(''),
+ isRaw:z.string().max(5).default('')
+});
+app.post('/import/preview', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
+ const input=z.object({rows:z.array(z.record(z.unknown())).min(1).max(5000)}).parse(req.body);
+ const problems:Array<{row:number;field:string;message:string}>=[];
+ const seen=new Set<string>();
+ let valid=0;
+ const normalized:Array<{kind:string;code:string;name:string;region:string;unit:string;value:string;isRaw:boolean}>=[];
+ for(let i=0;i<input.rows.length;i++){
+  const parsed=legacyRow.safeParse(input.rows[i]);
+  if(!parsed.success){problems.push({row:i+2,field:'format',message:'Ustun yoki qiymat formati noto‘g‘ri'});continue;}
+  const r=parsed.data;
+  const label=r.code.trim()||r.name.trim();
+  const key=r.kind+':'+label.toLocaleLowerCase('uz');
+  if(!label){problems.push({row:i+2,field:'code/name',message:'Kod yoki nom kiritilmagan'});continue;}
+  if(seen.has(key)){problems.push({row:i+2,field:'code/name',message:'Takror yozuv'});continue;}
+  seen.add(key);
+  if(r.kind==='PRODUCT' && (!r.code.trim()||!r.name.trim()||!r.unit.trim())){problems.push({row:i+2,field:'product',message:'Kod, nom va birlik majburiy'});continue;}
+  if(r.kind==='DEALER' && (!r.name.trim()||!r.region.trim())){problems.push({row:i+2,field:'dealer',message:'Diler nomi va viloyat majburiy'});continue;}
+  if(r.kind==='SUPPLIER' && !r.name.trim()){problems.push({row:i+2,field:'supplier',message:'Nomi majburiy'});continue;}
+  if(r.kind==='ACCOUNT' && !r.name.trim()){problems.push({row:i+2,field:'account',message:'Hisob nomi majburiy'});continue;}
+  if(r.kind.startsWith('OPENING_')){
+   if(!/^\d{1,15}(\.\d{1,4})?$/.test(r.value)){problems.push({row:i+2,field:'value',message:'Manfiy bo‘lmagan son kerak'});continue;}
+   if(r.kind!=='OPENING_STOCK' && !/^\d{1,15}(\.\d{1,2})?$/.test(r.value)){problems.push({row:i+2,field:'value',message:'Pul summasida 2 xonagacha kasr bo‘lishi mumkin'});continue;}
+  }
+  valid++;
+  normalized.push({kind:r.kind,code:r.code.trim(),name:r.name.trim(),region:r.region.trim(),unit:r.unit.trim(),value:r.value.trim(),isRaw:r.isRaw==='true'});
+ }
+ return reply.send({total:input.rows.length,valid,invalid:input.rows.length-valid,problems,normalized:normalized.slice(0,100),previewOnly:true,note:'Hech qanday ma’lumot bazaga yozilmadi. Boshlang‘ich qoldiqlarni rahbar tasdiqlashi shart.'});
+});
+app.get('/import/template.xlsx', {preHandler:gate(['OWNER'])}, async(_req,reply)=>{
+ const wb=new ExcelJS.Workbook();const sheet=wb.addWorksheet('Import shablon');
+ sheet.addRow(['kind','code','name','region','unit','value','isRaw']);
+ sheet.addRow(['PRODUCT','ECO900','Eco Wash 900','','qop','','false']);
+ sheet.addRow(['PRODUCT','SLES','SLES','','kg','','true']);
+ sheet.addRow(['DEALER','','Samarqand dileri','Samarqand','','','']);
+ sheet.addRow(['SUPPLIER','','Xomashyo ta’minotchisi','','','','']);
+ sheet.addRow(['ACCOUNT','','Naqd kassa','','','','']);
+ sheet.addRow(['OPENING_STOCK','SLES','','','','100.5','']);
+ sheet.addRow(['OPENING_DEALER','','Samarqand dileri','','','2000000','']);
+ sheet.addRow(['OPENING_CASH','','Naqd kassa','','','1500000','']);
+ sheet.getRow(1).font={bold:true};sheet.columns.forEach(c=>c.width=25);
+ const guide=wb.addWorksheet('Yo‘riqnoma');
+ guide.addRow(['Muhim','Namuna satrlar haqiqiy ECO WASH summalari emas. Faqat formatni ko‘rsatadi.']);
+ guide.addRow(['kind','PRODUCT / DEALER / SUPPLIER / ACCOUNT / OPENING_STOCK / OPENING_DEALER / OPENING_SUPPLIER / OPENING_CASH']);
+ guide.addRow(['code','Mahsulot yoki xomashyo kodi. OPENING_STOCKda majburiy.']);
+ guide.addRow(['name','Diler, yetkazib beruvchi yoki hisobning nomi.']);
+ guide.addRow(['value','Qoldiq (UZS yoki o‘lchov birligi), manfiy bo‘lmasin.']);
+ guide.addRow(['Cheklov','Bu shablonni to‘ldirish o‘zi avtomatik import qilmaydi; avval tekshiriladi, keyin rahbar tasdiqlaydi.']);
+ const buf=await wb.xlsx.writeBuffer();
+ return reply.header('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+ .header('Content-Disposition','attachment; filename="eco-wash-import-template.xlsx"')
+ .send(Buffer.from(buf));
+});
+
 app.get('/reports/summary', {preHandler:gate(financeRoles)}, async(req)=>{
  const q=z.object({from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
  const start=new Date(q.from+'T00:00:00.000Z');
