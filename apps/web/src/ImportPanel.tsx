@@ -15,6 +15,21 @@ export function ImportPanel({api,token}:Props){
    a.href=url;a.download='eco-wash-import-template.xlsx';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){setError(String(e));}
  }
+
+ async function uploadFile(file:File){
+  setBusy(true);setError('');setPreview(null);
+  try{
+   const form=new FormData();form.append('file',file);
+   const response=await fetch('/api/import/parse-file',{method:'POST',headers:{Authorization:'Bearer '+token},body:form});
+   const parsed=await response.json();
+   if(!response.ok)throw new Error(parsed.error||'Faylni o‘qib bo‘lmadi');
+   if(!parsed.rows.length)throw new Error('Faylda ma’lumot topilmadi');
+   const result=await api('/import/preview','POST',{rows:parsed.rows});
+   setPreview(result);setRows(parsed.rows);
+   setPaste([keys.join('\t'),...parsed.rows.map((r:Record<string,string>)=>keys.map(k=>r[k]||'').join('\t'))].join('\n'));
+  }catch(e){setError(String(e));}finally{setBusy(false);}
+ }
+
  async function commit(){
   if(!preview||preview.invalid!==0||rows.length!==preview.total||approval!=='ECO WASH IMPORTNI TASDIQLAYMAN')return;
   if(!confirm('Diqqat: haqiqiy boshlang‘ich hisoblarni bazaga yozasiz. Baza bo‘sh bo‘lishi kerak. Davom etasizmi?'))return;
@@ -38,7 +53,8 @@ export function ImportPanel({api,token}:Props){
  return <div className="panel"><h2>Eski Excel ma’lumotlarini tekshirish</h2>
  <p className="muted">Bu bo‘lim faqat importdan oldingi tekshiruv. Hech narsa bazaga ko‘chmaydi. Rahbar tasdiqlamaguncha real qoldiq o‘zgarmaydi.</p>
  <div className="reportactions"><button className="ghost" type="button" onClick={()=>void download()}>↓ Import uchun Excel shabloni</button></div>
- <form onSubmit={check} className="form" style={{maxWidth:'100%'}}><label>Excel shablonidagi satrlarni, sarlavhasi bilan, nusxalab shu yerga qo‘ying
+ <label style={{display:'block',margin:'18px 0'}}>To‘ldirilgan Excel faylni tanlang<input type="file" accept=".xlsx" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadFile(file);}}/></label>
+ <p className="muted">Yoki Excel ustunlarini quyidagi maydonga qo‘lda nusxalang.</p><form onSubmit={check} className="form" style={{maxWidth:'100%'}}><label>Excel shablonidagi satrlarni, sarlavhasi bilan, nusxalab shu yerga qo‘ying
  <textarea rows={9} required value={paste} onChange={e=>setPaste(e.target.value)} placeholder={'kind\tcode\tname\tregion\tunit\tvalue\tisRaw\nPRODUCT\tECO900\tEco Wash 900\t\tqop\t\tfalse'}/></label>
  <button disabled={busy}>{busy?'Tekshirilmoqda...':'Xatolarni tekshirish (bazaga yozmaydi)'}</button></form>
  {error&&<div className="notice error">{error}</div>}
