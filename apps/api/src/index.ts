@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import rateLimit from '@fastify/rate-limit';
 import { Prisma, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
@@ -14,6 +15,7 @@ const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) throw new Error('JWT_SECRET must be 32+ characters');
 await app.register(cors, { origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173' });
 await app.register(jwt, { secret: jwtSecret, sign: { expiresIn: '8h' } });
+await app.register(rateLimit,{global:false});
 type Role = 'OWNER' | 'MANAGER' | 'ATTENDANCE' | 'WAREHOUSE';
 type Session = { id: string; role: Role };
 app.decorateRequest('session', null);
@@ -55,7 +57,7 @@ const commandBody = z.object({ idempotencyKey: id, command: cmd });
 const dec = (x: string | Prisma.Decimal) => new Prisma.Decimal(x);
 const insufficient = (s: string): never => { throw Object.assign(new Error(s), { statusCode: 409 }); };
 app.get('/health', async () => ({ status: 'ok', service: 'eco-wash-api' }));
-app.post('/auth/login', async (req, reply) => {
+app.post('/auth/login', {config:{rateLimit:{max:8,timeWindow:'1 minute'}}}, async (req, reply) => {
  const b = z.object({ login: z.string().min(1), password: z.string().min(1) }).parse(req.body);
  const user = await prisma.user.findUnique({ where: { login: b.login } });
  if (!user?.active || !(await bcrypt.compare(b.password,user.passwordHash))) return reply.code(401).send({ error: 'INVALID_CREDENTIALS' });
