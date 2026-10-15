@@ -448,7 +448,7 @@ app.post('/import/commit', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
   for(const r of body.rows.filter(x=>x.kind==='ACCOUNT'))await tx.moneyAccount.create({data:{name:r.name}});
   for(const r of body.rows.filter(x=>x.kind==='OPENING_STOCK')){
    const product=await tx.product.findUnique({where:{sku:r.code}});
-   if(!product) insufficient('IMPORT_PRODUCT_NOT_FOUND');
+   if(!product) throw new Error('IMPORT_PRODUCT_NOT_FOUND');
    const value=dec(r.value);
    await tx.product.update({where:{id:product.id},data:{stock:value}});
    await tx.inventoryMovement.create({data:{operationId:op.id,productId:product.id,quantity:value}});
@@ -462,14 +462,14 @@ app.post('/import/commit', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
   }
   for(const r of body.rows.filter(x=>x.kind==='OPENING_SUPPLIER')){
    const item=await tx.supplier.findUnique({where:{name:r.name}});
-   if(!item) insufficient('IMPORT_SUPPLIER_NOT_FOUND');
+   if(!item) throw new Error('IMPORT_SUPPLIER_NOT_FOUND');
    const value=dec(r.value);
    await tx.supplier.update({where:{id:item.id},data:{payable:value}});
    await tx.supplierEntry.create({data:{operationId:op.id,supplierId:item.id,amount:value}});
   }
   for(const r of body.rows.filter(x=>x.kind==='OPENING_CASH')){
    const item=await tx.moneyAccount.findUnique({where:{name:r.name}});
-   if(!item) insufficient('IMPORT_ACCOUNT_NOT_FOUND');
+   if(!item) throw new Error('IMPORT_ACCOUNT_NOT_FOUND');
    const value=dec(r.value);
    await tx.moneyAccount.update({where:{id:item.id},data:{balance:value}});
    await tx.moneyEntry.create({data:{operationId:op.id,accountId:item.id,amount:value}});
