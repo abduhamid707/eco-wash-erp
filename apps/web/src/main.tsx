@@ -85,7 +85,7 @@ function App(){
    }
    try{await api('/operations','POST',payload);}
    catch(error){
-    if(error instanceof TypeError){await addPending(payload.idempotencyKey,payload);setValues({});setMessage('Internet uzildi. Amal lokal navbatga yozildi, server tasdiqlamadi.');await updatePending();return;}
+    if(error instanceof TypeError){if(!userId)throw new Error('Foydalanuvchi tasdiqlanmagan');await addPending(payload.idempotencyKey,payload,userId);setValues({});setMessage('Internet uzildi. Amal lokal navbatga yozildi, server tasdiqlamadi.');await updatePending();return;}
     throw error;
    }
    setValues({});setMessage('Operatsiya serverda tasdiqlandi');await refresh();
