@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import rateLimit from '@fastify/rate-limit';
+import multipart from '@fastify/multipart';
 import { Prisma, PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { createHash } from 'node:crypto';
@@ -16,6 +17,7 @@ if (!jwtSecret || jwtSecret.length < 32) throw new Error('JWT_SECRET must be 32+
 await app.register(cors, { origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173' });
 await app.register(jwt, { secret: jwtSecret, sign: { expiresIn: '8h' } });
 await app.register(rateLimit,{global:false});
+await app.register(multipart,{limits:{fileSize:5*1024*1024,files:1}});
 type Role = 'OWNER' | 'MANAGER' | 'ATTENDANCE' | 'WAREHOUSE';
 type Session = { id: string; role: Role };
 app.decorateRequest('session', null);
@@ -461,6 +463,37 @@ app.post('/import/preview', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
   normalized.push({kind:r.kind,code:r.code.trim(),name:r.name.trim(),region:r.region.trim(),unit:r.unit.trim(),value:r.value.trim(),isRaw:r.isRaw==='true'});
  }
  return reply.send({total:input.rows.length,valid,invalid:input.rows.length-valid,problems,normalized:normalized.slice(0,100),previewOnly:true,note:'Hech qanday ma’lumot bazaga yozilmadi. Boshlang‘ich qoldiqlarni rahbar tasdiqlashi shart.'});
+});
+
+
+app.post('/import/parse-file', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
+ const file=await req.file();
+ if(!file)return reply.code(400).send({error:'XLSX_REQUIRED'});
+ if(!file.filename.toLowerCase().endsWith('.xlsx'))return reply.code(400).send({error:'ONLY_XLSX_SUPPORTED'});
+ const bytes=await file.toBuffer();
+ const workbook=new ExcelJS.Workbook();
+ try{await workbook.xlsx.load(bytes as unknown as import('exceljs').Buffer);}catch{return reply.code(400).send({error:'INVALID_XLSX'});}
+ const sheet=workbook.worksheets.find(x=>x.name==='Import shablon')??workbook.worksheets[0];
+ if(!sheet)return reply.code(400).send({error:'NO_WORKSHEET'});
+ const expected=['kind','code','name','region','unit','value','isRaw'];
+ const actual=(sheet.getRow(1).values as Array<unknown>).slice(1).map(x=>String(x??'').trim());
+ if(expected.some(x=>!actual.includes(x)))return reply.code(400).send({error:'HEADERS_MISMATCH',expected,actual});
+ const rows:Array<Record<string,string>>=[];
+ for(let i=2;i<=sheet.rowCount;i++){
+  const row=sheet.getRow(i);
+  if(!row.hasValues)continue;
+  const item:Record<string,string>={};
+  for(const field of expected){
+   const cell=row.getCell(actual.indexOf(field)+1);
+   const value=cell.value;
+   if(value&&typeof value==='object'&&'text' in value)item[field]=String(value.text??'').trim();
+   else if(value&&typeof value==='object'&&'result' in value)item[field]=String(value.result??'').trim();
+   else item[field]=String(value??'').trim();
+  }
+  rows.push(item);
+  if(rows.length>5000)return reply.code(413).send({error:'TOO_MANY_ROWS'});
+ }
+ return {rows,count:rows.length,parsedOnly:true};
 });
 
 app.post('/import/commit', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
