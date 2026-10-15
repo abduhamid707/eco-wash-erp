@@ -33,6 +33,7 @@ model Product {
  isRaw Boolean @default(false)
  active Boolean @default(true)
  stock Decimal @default(0) @db.Decimal(20,4)
+ averageCost Decimal? @db.Decimal(20,4)
  movements InventoryMovement[]
  recipes Recipe[]
  recipeIngredients RecipeIngredient[]

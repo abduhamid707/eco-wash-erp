@@ -151,13 +151,25 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
   const dealerId='dealerId' in c ? c.dealerId : undefined;
   const supplierId='supplierId' in c ? c.supplierId : undefined;
   const result=await tx.operation.create({data:{idempotencyKey:b.idempotencyKey,requestHash:hash,type:c.type,occurredAt:new Date(c.occurredAt),createdById:req.session!.id,dealerId,supplierId,metadata:JSON.parse(JSON.stringify(c))}});
-  const stock=async(productId:string,delta:Prisma.Decimal,unitCost?:string)=>{
+  const stock=async(productId:string,delta:Prisma.Decimal,unitCost?:string):Promise<Prisma.Decimal|null>=>{
    const product=await tx.product.findUnique({where:{id:productId}});
    if(!product) throw new Error('PRODUCT_NOT_FOUND');
    if(!product.active) insufficient('PRODUCT_INACTIVE');
-   if(product.stock.add(delta).lt(0)) insufficient('INSUFFICIENT_STOCK');
-   await tx.product.update({where:{id:productId},data:{stock:{increment:delta}}});
-   await tx.inventoryMovement.create({data:{operationId:result.id,productId,quantity:delta,unitCost:unitCost?dec(unitCost):undefined}});
+   const newStock=product.stock.add(delta);
+   if(newStock.lt(0)) insufficient('INSUFFICIENT_STOCK');
+   const postedCost=unitCost!==undefined?dec(unitCost):product.averageCost;
+   let averageCost:Prisma.Decimal|null=product.averageCost;
+   if(delta.gt(0)){
+    if(unitCost!==undefined){
+     if(product.stock.eq(0))averageCost=dec(unitCost);
+     else if(product.averageCost)averageCost=product.averageCost.mul(product.stock).add(dec(unitCost).mul(delta)).div(newStock).toDecimalPlaces(4);
+     else averageCost=null;
+    }else if(product.stock.eq(0))averageCost=null;
+   }
+   if(newStock.eq(0))averageCost=null;
+   await tx.product.update({where:{id:productId},data:{stock:{increment:delta},averageCost}});
+   await tx.inventoryMovement.create({data:{operationId:result.id,productId,quantity:delta,unitCost:postedCost}});
+   return postedCost;
   };
   const changeAccount=async(accountId:string,delta:Prisma.Decimal)=>{
    const account=await tx.moneyAccount.findUnique({where:{id:accountId}});
@@ -202,7 +214,8 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    const already=prior.filter(x=>(x.metadata as {shipmentId?:string})?.shipmentId===c.shipmentId)
     .reduce((total,x)=>total.add((x.metadata as {quantity:string}).quantity),dec('0'));
    if(already.add(c.quantity).gt(origQuantity!)) insufficient('RETURN_EXCEEDS_SHIPMENT');
-   await stock(pid!,dec(c.quantity));
+   const shipmentMovement=await tx.inventoryMovement.findFirst({where:{operationId:shipment.id,productId:pid!}});
+   await stock(pid!,dec(c.quantity),shipmentMovement?.unitCost?.toString());
    await dealerChange(originalDealer!,dec(c.quantity).mul(unitPrice!).neg());
   }
   if(c.type==='VOID_OPERATION'){
@@ -264,11 +277,16 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    if(!recipe.active) insufficient('RECIPE_INACTIVE');
    if(recipe.product.isRaw) insufficient('RECIPE_OUTPUT_MUST_BE_FINISHED_PRODUCT');
    const multiplier=dec(c.batches);
+   let totalMaterialCost=dec('0'),allPriced=true;
    for(const line of recipe.ingredients){
     if(line.materialId===recipe.productId) insufficient('RECIPE_SELF_CONSUMPTION');
-    await stock(line.materialId,line.quantity.mul(multiplier).neg());
+    const consumed=line.quantity.mul(multiplier);
+    const consumedCost=await stock(line.materialId,consumed.neg());
+    if(consumedCost===null)allPriced=false;
+    else totalMaterialCost=totalMaterialCost.add(consumed.mul(consumedCost));
    }
-   await stock(recipe.productId,recipe.outputQuantity.mul(multiplier));
+   const produced=recipe.outputQuantity.mul(multiplier);
+   await stock(recipe.productId,produced,allPriced?totalMaterialCost.div(produced).toFixed(4):undefined);
   }
   if(c.type==='SHIPMENT'){
    const dealer=await tx.dealer.findUnique({where:{id:c.dealerId}});
