@@ -570,6 +570,22 @@ app.get('/audit/reconciliation', {preHandler:gate(['OWNER'])}, async()=>{
  return {ok:errors.length===0,checked:{products:products.length,dealers:dealers.length,suppliers:suppliers.length,accounts:accounts.length},errors};
 });
 
+
+app.get('/statements/:kind/:id', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const q=z.object({kind:z.enum(['dealer','supplier']),id}).parse(req.params);
+ const limit=z.coerce.number().int().min(1).max(500).default(100).parse((req.query as Record<string,string>).limit);
+ if(q.kind==='dealer'){
+  const item=await prisma.dealer.findUnique({where:{id:q.id}});
+  if(!item)return reply.code(404).send({error:'DEALER_NOT_FOUND'});
+  const entries=await prisma.dealerEntry.findMany({where:{dealerId:q.id},orderBy:{operation:{occurredAt:'desc'}},take:limit,include:{operation:{select:{id:true,type:true,occurredAt:true,status:true,metadata:true}}}});
+  return {name:item.name,region:item.region,balance:item.receivable.toString(),currency:'UZS',entries:entries.map(x=>({operationId:x.operationId,type:x.operation.type,date:x.operation.occurredAt.toISOString(),amount:x.amount.toString(),status:x.operation.status}))};
+ }
+ const item=await prisma.supplier.findUnique({where:{id:q.id}});
+ if(!item)return reply.code(404).send({error:'SUPPLIER_NOT_FOUND'});
+ const entries=await prisma.supplierEntry.findMany({where:{supplierId:q.id},orderBy:{operation:{occurredAt:'desc'}},take:limit,include:{operation:{select:{id:true,type:true,occurredAt:true,status:true}}}});
+ return {name:item.name,balance:item.payable.toString(),currency:'UZS',entries:entries.map(x=>({operationId:x.operationId,type:x.operation.type,date:x.operation.occurredAt.toISOString(),amount:x.amount.toString(),status:x.operation.status}))};
+});
+
 app.get('/reports/export.xlsx', { preHandler: gate(financeRoles) }, async (_req,reply)=>{
  const [products,dealers,accounts,ops,suppliers,employees,attendance,payroll,recipes]=await Promise.all([
   prisma.product.findMany({orderBy:{name:'asc'}}),
