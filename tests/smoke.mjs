@@ -119,3 +119,32 @@ const turn=await api('/reports/summary?from=2026-10-01&to=2026-10-31');
 assert.equal(turn.salesReturns,'-100.00');
 assert.equal(turn.netSales,'300.00');
 console.log('PASS: returned goods reduce net sales');
+
+
+async function expectStatus(path,method,payload,status,authToken=token){
+ const res=await fetch(base+path,{method,headers:{'Content-Type':'application/json',Authorization:'Bearer '+authToken},body:JSON.stringify(payload)});
+ assert.equal(res.status,status,await res.text().catch(()=>''));
+}
+const unsafeShip={type:'SHIPMENT',dealerId:dealer.id,productId:product.id,quantity:'999999',unitPrice:'2',occurredAt:when};
+await expectStatus('/operations','POST',{idempotencyKey:uuid(),command:unsafeShip},409);
+await expectStatus('/operations','POST',{idempotencyKey:key,command:{...receipt,quantity:'1'}},409);
+const afterRejected=await api('/dashboard');
+assert.equal(afterRejected.products.find(x=>x.id===product.id).stock,
+ (await api('/dashboard')).products.find(x=>x.id===product.id).stock);
+const noAuth=await fetch(base+'/users');
+assert.equal(noAuth.status,401);
+const attendanceUser=await api('/users','POST',{name:'Attendance limited user',login:'attendance-test',password:'test-login-password-123',role:'ATTENDANCE'});
+assert.ok(attendanceUser.id);
+const loginAtt=await fetch(base+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login:'attendance-test',password:'test-login-password-123'})});
+const attendanceToken=(await loginAtt.json()).token;
+const limited=await fetch(base+'/dashboard',{headers:{Authorization:'Bearer '+attendanceToken}});
+const limitedBody=await limited.json();
+assert.equal(limited.status,200);
+assert.deepEqual(limitedBody.accounts,[]);
+assert.deepEqual(limitedBody.dealers,[]);
+const staffList=await fetch(base+'/employees',{headers:{Authorization:'Bearer '+attendanceToken}});
+const listBody=await staffList.json();
+assert.equal(staffList.status,200);
+assert.ok(listBody.every(x=>!Object.hasOwn(x,'monthlySalary')));
+await expectStatus('/operations','POST',{idempotencyKey:uuid(),command:receipt},403,attendanceToken);
+console.log('PASS: authorization boundaries, immutable idempotency and negative-stock rejection');
