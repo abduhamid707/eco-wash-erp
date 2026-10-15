@@ -612,6 +612,45 @@ app.get('/import/template.xlsx', {preHandler:gate(['OWNER'])}, async(_req,reply)
  .send(Buffer.from(buf));
 });
 
+
+app.get('/reports/gross-margin-estimate', {preHandler:gate(financeRoles)}, async req=>{
+ const q=z.object({from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
+ const start=new Date(q.from+'T00:00:00.000Z'),end=new Date(q.to+'T00:00:00.000Z');
+ if(Number.isNaN(start.getTime())||Number.isNaN(end.getTime())||start>end) insufficient('INVALID_DATE_RANGE');
+ end.setUTCDate(end.getUTCDate()+1);
+ const list=await prisma.operation.findMany({where:{occurredAt:{gte:start,lt:end},status:'POSTED',type:{in:['SHIPMENT','DEALER_RETURN']}},include:{movements:true}});
+ const returnIds=list.filter(x=>x.type==='DEALER_RETURN').map(x=>(x.metadata as {shipmentId?:string}|null)?.shipmentId).filter((v):v is string=>!!v);
+ const origins=await prisma.operation.findMany({where:{id:{in:returnIds}},include:{movements:true}});
+ const originById=new Map(origins.map(x=>[x.id,x]));
+ let sales=dec('0'),materialCost=dec('0');
+ const missing:string[]=[];
+ for(const op of list){
+  const details=op.metadata as {quantity?:string;unitPrice?:string;shipmentId?:string}|null;
+  if(op.type==='SHIPMENT'){
+   sales=sales.add(dec(details?.quantity??'0').mul(details?.unitPrice??'0'));
+   for(const movement of op.movements.filter(x=>x.quantity.lt(0))){
+    if(movement.unitCost===null)missing.push(op.id);
+    else materialCost=materialCost.add(movement.quantity.neg().mul(movement.unitCost));
+   }
+  }else{
+   const origin=originById.get(details?.shipmentId??'');
+   const originDetails=origin?.metadata as {unitPrice?:string}|undefined;
+   const amount=dec(details?.quantity??'0');
+   sales=sales.sub(amount.mul(originDetails?.unitPrice??'0'));
+   const cost=origin?.movements.find(x=>x.quantity.lt(0))?.unitCost;
+   if(!cost)missing.push(op.id);
+   else materialCost=materialCost.sub(amount.mul(cost));
+  }
+ }
+ return {
+  from:q.from,to:q.to,currency:'UZS',netSales:sales.toFixed(2),
+  materialCost:missing.length?null:materialCost.toFixed(2),
+  estimatedGrossMargin:missing.length?null:sales.sub(materialCost).toFixed(2),
+  priced:missing.length===0,unpricedOperationIds:missing,
+  officialNetProfit:false,method:'Moving weighted-average purchase material cost; labor, transport, packaging and overhead not included'
+ };
+});
+
 app.get('/reports/summary', {preHandler:gate(financeRoles)}, async(req)=>{
  const q=z.object({from:z.string().regex(/^\d{4}-\d{2}-\d{2}$/),to:z.string().regex(/^\d{4}-\d{2}-\d{2}$/)}).parse(req.query);
  const start=new Date(q.from+'T00:00:00.000Z');
