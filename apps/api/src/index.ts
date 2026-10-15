@@ -235,16 +235,16 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
 
   if(c.type==='SUPPLIER_RETURN'){
    const purchase=await tx.operation.findUnique({where:{id:c.purchaseId}});
-   if(!purchase) insufficient('PURCHASE_NOT_FOUND');
+   if(!purchase) throw new Error('PURCHASE_NOT_FOUND');
    if(purchase.type!=='SUPPLIER_RECEIPT'||purchase.status!=='POSTED'||!purchase.supplierId) insufficient('PURCHASE_INVALID');
    const original=purchase.metadata as {productId?:string;quantity?:string;unitCost?:string}|null;
    const productId=original?.productId,quantity=original?.quantity,unitCost=original?.unitCost;
    if(!productId||!quantity||!unitCost) insufficient('PURCHASE_DETAILS_MISSING');
    const previous=await tx.operation.findMany({where:{type:'SUPPLIER_RETURN',status:'POSTED',id:{not:result.id}}});
    const returned=previous.filter(x=>(x.metadata as {purchaseId?:string}|null)?.purchaseId===c.purchaseId).reduce((t,x)=>t.add((x.metadata as {quantity:string}).quantity),dec('0'));
-   if(returned.add(c.quantity).gt(quantity)) insufficient('SUPPLIER_RETURN_EXCEEDS_PURCHASE');
-   await stock(productId,dec(c.quantity).neg());
-   await supplierChange(purchase.supplierId,dec(c.quantity).mul(unitCost).neg());
+   if(returned.add(c.quantity).gt(quantity!)) insufficient('SUPPLIER_RETURN_EXCEEDS_PURCHASE');
+   await stock(productId!,dec(c.quantity).neg());
+   await supplierChange(purchase.supplierId!,dec(c.quantity).mul(unitCost!).neg());
   }
   if(c.type==='SUPPLIER_RECEIPT'){
    const material=await tx.product.findUnique({where:{id:c.productId}});
