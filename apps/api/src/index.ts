@@ -406,6 +406,80 @@ app.post('/import/preview', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
  }
  return reply.send({total:input.rows.length,valid,invalid:input.rows.length-valid,problems,normalized:normalized.slice(0,100),previewOnly:true,note:'Hech qanday ma’lumot bazaga yozilmadi. Boshlang‘ich qoldiqlarni rahbar tasdiqlashi shart.'});
 });
+
+app.post('/import/commit', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
+ const body=z.object({
+  importKey:id,
+  confirm:z.literal('ECO WASH IMPORTNI TASDIQLAYMAN'),
+  rows:z.array(legacyRow).min(1).max(5000)
+ }).parse(req.body);
+ // The migration is a once-only opening import. All records must be clean before any write.
+ const allowed=new Set(['PRODUCT','DEALER','SUPPLIER','ACCOUNT','OPENING_STOCK','OPENING_DEALER','OPENING_SUPPLIER','OPENING_CASH']);
+ const keySet=new Set<string>();
+ for(const row of body.rows){
+  if(!allowed.has(row.kind)) insufficient('IMPORT_KIND_INVALID');
+  const name=(row.code||row.name).trim();
+  if(!name) insufficient('IMPORT_REFERENCE_REQUIRED');
+  const uniq=row.kind+':'+name.toLocaleLowerCase('uz');
+  if(keySet.has(uniq)) insufficient('DUPLICATE_IMPORT_ROW');
+  keySet.add(uniq);
+  if(row.kind==='PRODUCT'&&(!row.code||!row.name||!row.unit)) insufficient('PRODUCT_FIELDS_REQUIRED');
+  if(row.kind==='DEALER'&&(!row.name||!row.region)) insufficient('DEALER_FIELDS_REQUIRED');
+  if(row.kind.startsWith('OPENING_')){
+   if(!/^\d{1,15}(\.\d{1,4})?$/.test(row.value)) insufficient('INVALID_OPENING_VALUE');
+   if(row.kind!=='OPENING_STOCK'&&!/^\d{1,15}(\.\d{1,2})?$/.test(row.value)) insufficient('INVALID_OPENING_MONEY');
+  }
+ }
+ const hash=createHash('sha256').update(JSON.stringify(body.rows)).digest('hex');
+ const res=await prisma.$transaction(async tx=>{
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773301)`;
+  const prior=await tx.operation.findUnique({where:{idempotencyKey:body.importKey}});
+  if(prior){if(prior.requestHash!==hash) insufficient('IDEMPOTENCY_KEY_REUSED');return {id:prior.id,alreadyImported:true};}
+  const existing=await tx.operation.count();
+  const counts=await Promise.all([tx.product.count(),tx.dealer.count(),tx.supplier.count(),tx.moneyAccount.count()]);
+  if(existing!==0||counts.some(x=>x!==0)) insufficient('IMPORT_REQUIRES_EMPTY_BUSINESS_DATABASE');
+  const op=await tx.operation.create({data:{
+   idempotencyKey:body.importKey,requestHash:hash,type:'OPENING_IMPORT',
+   occurredAt:new Date(),createdById:req.session!.id,metadata:{rows:body.rows.length}
+  }});
+  for(const r of body.rows.filter(x=>x.kind==='PRODUCT'))await tx.product.create({data:{sku:r.code,name:r.name,unit:r.unit,isRaw:r.isRaw==='true'}});
+  for(const r of body.rows.filter(x=>x.kind==='DEALER'))await tx.dealer.create({data:{name:r.name,region:r.region}});
+  for(const r of body.rows.filter(x=>x.kind==='SUPPLIER'))await tx.supplier.create({data:{name:r.name}});
+  for(const r of body.rows.filter(x=>x.kind==='ACCOUNT'))await tx.moneyAccount.create({data:{name:r.name}});
+  for(const r of body.rows.filter(x=>x.kind==='OPENING_STOCK')){
+   const product=await tx.product.findUnique({where:{sku:r.code}});
+   if(!product) insufficient('IMPORT_PRODUCT_NOT_FOUND');
+   const value=dec(r.value);
+   await tx.product.update({where:{id:product.id},data:{stock:value}});
+   await tx.inventoryMovement.create({data:{operationId:op.id,productId:product.id,quantity:value}});
+  }
+  for(const r of body.rows.filter(x=>x.kind==='OPENING_DEALER')){
+   const records=await tx.dealer.findMany({where:{name:r.name}});
+   if(records.length!==1) insufficient('IMPORT_DEALER_AMBIGUOUS');
+   const item=records[0],value=dec(r.value);
+   await tx.dealer.update({where:{id:item.id},data:{receivable:value}});
+   await tx.dealerEntry.create({data:{operationId:op.id,dealerId:item.id,amount:value}});
+  }
+  for(const r of body.rows.filter(x=>x.kind==='OPENING_SUPPLIER')){
+   const item=await tx.supplier.findUnique({where:{name:r.name}});
+   if(!item) insufficient('IMPORT_SUPPLIER_NOT_FOUND');
+   const value=dec(r.value);
+   await tx.supplier.update({where:{id:item.id},data:{payable:value}});
+   await tx.supplierEntry.create({data:{operationId:op.id,supplierId:item.id,amount:value}});
+  }
+  for(const r of body.rows.filter(x=>x.kind==='OPENING_CASH')){
+   const item=await tx.moneyAccount.findUnique({where:{name:r.name}});
+   if(!item) insufficient('IMPORT_ACCOUNT_NOT_FOUND');
+   const value=dec(r.value);
+   await tx.moneyAccount.update({where:{id:item.id},data:{balance:value}});
+   await tx.moneyEntry.create({data:{operationId:op.id,accountId:item.id,amount:value}});
+  }
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'OPENING_IMPORT',entityType:'Operation',entityId:op.id,after:{rowCount:body.rows.length,hash}}});
+  return {id:op.id,alreadyImported:false};
+ },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,timeout:30000,maxWait:15000});
+ return reply.code(res.alreadyImported?200:201).send(res);
+});
+
 app.get('/import/template.xlsx', {preHandler:gate(['OWNER'])}, async(_req,reply)=>{
  const wb=new ExcelJS.Workbook();const sheet=wb.addWorksheet('Import shablon');
  sheet.addRow(['kind','code','name','region','unit','value','isRaw']);
