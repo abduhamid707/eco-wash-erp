@@ -148,3 +148,9 @@ assert.equal(staffList.status,200);
 assert.ok(listBody.every(x=>!Object.hasOwn(x,'monthlySalary')));
 await expectStatus('/operations','POST',{idempotencyKey:uuid(),command:receipt},403,attendanceToken);
 console.log('PASS: authorization boundaries, immutable idempotency and negative-stock rejection');
+
+const dStatement=await api('/statements/dealer/'+dealer.id);
+assert.equal(dStatement.balance,'100');
+const sStatement=await api('/statements/supplier/'+supplier.id);
+assert.equal(sStatement.balance,'70');
+console.log('PASS: debt statement balances');
