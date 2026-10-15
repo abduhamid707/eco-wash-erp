@@ -209,6 +209,10 @@ app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, 
    if(original.status!=='POSTED'||original.type==='VOID_OPERATION'||original.type.startsWith('PAYROLL_')) insufficient('CANNOT_VOID_OPERATION');
    const dependents=await tx.operation.findMany({where:{type:'DEALER_RETURN',status:'POSTED'}});
    if(dependents.some(x=>(x.metadata as {shipmentId?:string})?.shipmentId===original.id)) insufficient('SHIPMENT_HAS_RETURNS');
+   if(original.type==='SUPPLIER_RECEIPT'){
+    const supplierReturns=await tx.operation.findMany({where:{type:'SUPPLIER_RETURN',status:'POSTED'}});
+    if(supplierReturns.some(x=>(x.metadata as {purchaseId?:string}|null)?.purchaseId===original.id)) insufficient('PURCHASE_HAS_RETURNS');
+   }
    for(const m of original.movements) await stock(m.productId,m.quantity.neg(),m.unitCost?.toString());
    for(const m of original.moneyEntries) await changeAccount(m.accountId,m.amount.neg());
    for(const m of original.dealerEntries) await dealerChange(m.dealerId,m.amount.neg());
