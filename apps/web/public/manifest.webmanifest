@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "ECO WASH — Korxona boshqaruvi",
+  "short_name": "ECO WASH",
+  "description": "Ombor, ishlab chiqarish, dilerlar va pul hisobi",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f7f8",
+  "theme_color": "#0a2937",
+  "lang": "uz",
+  "icons": [
+    {
+      "src": "/eco-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
