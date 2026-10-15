@@ -23,3 +23,16 @@ GitHub Actions builds web/API and boots PostgreSQL for smoke tests on every push
 
 ## Release gate
 Migration SQL, backup/restore drills, audited starting balances, agreed cost accounting, user-acceptance tests, pen-test of auth/session/offline, and rollback deployment must pass before production.
+
+## ECO WASH legacy workbook review
+The four historical Excel files contain side-by-side date snapshots and mixed financial conventions. They must not be imported by copying every cell as an operation.
+
+Run the read-only converter with real filenames on a trusted machine:
+
+```bash
+pnpm --filter @eco/api legacy:review -- "/path/ECO WASH HISOBOT. Y(1).xlsx" "/path/Hisob k.xlsx" "/path/Viloyatlar qarzi.xlsx" "/path/KAMOLIDDIN AKA RASXOD.xlsx" "/path/eco-wash-legacy-review.xlsx"
+```
+
+The output marks latest raw/finished stock candidates, dealer debt candidates, shipments, staff and expense rows. **It does not change PostgreSQL**. Only the owner-reviewed values should be pasted into the generated `Import shablon`, with correct units and duplicate names resolved. The app performs another validation and requires owner confirmation before a one-time opening import.
+
+Do not commit historic source Excel files, bank balances or generated review workbooks to the public GitHub repository.
