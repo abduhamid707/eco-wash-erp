@@ -6,3 +6,5 @@
 textarea{font:inherit;width:100%;padding:12px;border:1px solid #cadbdd;border-radius:10px;resize:vertical}
 
 .trend-chart{display:flex;align-items:end;gap:3px;height:190px;border-bottom:1px solid #d9e7e6;padding:12px 1px 0;overflow:hidden}.trend-col{height:100%;flex:1;min-width:2px;display:flex;align-items:end}.trend-bars{height:100%;width:100%;display:flex;gap:1px;align-items:end}.trend-bars>div{flex:1;min-width:1px;border-radius:3px 3px 0 0}.trend-sales{background:#079b85}.trend-costs{background:#d3a66a}.trend-legend{display:flex;justify-content:end;gap:18px;margin-top:12px;color:#687e80;font-size:12px}.trend-swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+
+.login .ghost{background:#eff6f6;border:1px solid #d6e5e6;color:#17444b;padding:8px;border-radius:9px}.panel table{margin-top:14px}.panel table tr:hover td{background:#f7faf9}.form label{line-height:1.5}.app button:focus-visible,.app input:focus-visible,.app select:focus-visible{outline:2px solid #1a998a;outline-offset:2px}

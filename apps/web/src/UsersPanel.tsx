@@ -14,5 +14,5 @@ export function UsersPanel({api}:{api:API}){
  <label>Parol (kamida 12 belgi)<input type="password" autoComplete="new-password" minLength={12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
  <label>Huquqi<select value={role} onChange={e=>setRole(e.target.value)}>{Object.entries(roles).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
  <button disabled={busy}>Foydalanuvchi qo‘shish</button></form>
- <div className="panel"><h2>Tizim foydalanuvchilari</h2>{users.map(x=><div className="history" key={x.id}><span><b>{x.name}</b><small style={{display:'block'}}>{x.login} · {roles[x.role]||x.role}</small></span><button className="ghost" disabled={busy} onClick={()=>void toggle(x)}>{x.active?'O‘chirish':'Faollashtirish'}</button></div>)}</div></div>;
+ <div className="panel"><h2>Tizim foydalanuvchilari</h2>{users.map(x=><div className="history" key={x.id}><span><b>{x.name}</b><small style={{display:'block'}}>{x.login} · {roles[x.role]||x.role}</small></span><button className="ghost" disabled={busy} onClick={()=>void toggle(x)}>{x.active?'Faolsizlantirish':'Faollashtirish'}</button></div>)}</div></div>;
 }
