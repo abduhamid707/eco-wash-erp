@@ -34,6 +34,8 @@ function App(){
  const [catalogKind,setCatalogKind]=useState<'products'|'dealers'|'accounts'|'suppliers'>('products');
  const [catalog,setCatalog]=useState<Record<string,string>>({});
  const [catalogFilter,setCatalogFilter]=useState('');
+ const [editingCatalog,setEditingCatalog]=useState<string|null>(null);
+ const [editCatalogValues,setEditCatalogValues]=useState<Record<string,string>>({});
  const [message,setMessage]=useState('');
  const [pending,setPending]=useState(0);
  const [syncing,setSyncing]=useState(false);
@@ -107,6 +109,17 @@ function App(){
    setValues({});setMessage('Operatsiya serverda tasdiqlandi');await refresh();
   }catch(e){setError(String(e));}finally{setBusy(false);}
  }
+ async function saveCatalogEdit(){
+  if(!editingCatalog)return;
+  setBusy(true);setError('');setMessage('');
+  try{
+   const body:Record<string,string>={name:editCatalogValues.name};
+   if(catalogKind==='products')body.unit=editCatalogValues.unit;
+   if(catalogKind==='dealers')body.region=editCatalogValues.region;
+   await api('/'+catalogKind+'/'+editingCatalog,'PATCH',body);
+   setEditingCatalog(null);setEditCatalogValues({});setMessage('Ma’lumot yangilandi');await refresh();
+  }catch(e){setError(String(e));}finally{setBusy(false);}
+ }
  async function saveCatalog(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');setMessage('');
   const payload:Record<string,unknown>={...catalog};
@@ -168,7 +181,11 @@ function App(){
  {tab==='statements'&&<StatementsPanel api={api} dealers={data?.dealers||[]} suppliers={data?.suppliers||[]}/>}
  {tab==='users'&&<UsersPanel api={api}/>}
  {tab==='import'&&<ImportPanel api={api} token={token}/>}
- {tab==='catalog'&&<div className="columns"><form className="panel form" onSubmit={saveCatalog}><h2>Yangi yozuv</h2><label>Bo‘lim<select value={catalogKind} onChange={e=>{setCatalogKind(e.target.value as typeof catalogKind);setCatalog({});}}><option value="products">Mahsulotlar</option><option value="dealers">Dilerlar</option><option value="accounts">Pul hisoblari (faqat rahbar)</option><option value="suppliers">Yetkazib beruvchilar</option></select></label>{catalogFields[catalogKind].map(([key,title])=><label key={key}>{title}{key==='isRaw'?<select value={catalog[key]||'false'} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}><option value="false">Tayyor mahsulot</option><option value="true">Xomashyo</option></select>:key==='unit'?<select required value={catalog[key]||''} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}><option value="">Birlikni tanlang</option><option value="kg">kg</option><option value="qop">qop</option><option value="dona">dona</option><option value="litr">litr</option></select>:<input required value={catalog[key]||''} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}/>}</label>)}<button disabled={busy}>Qo‘shish</button></form><div className="panel"><h2>Joriy ma’lumotlar</h2><input placeholder="Ro‘yxatdan qidirish" value={catalogFilter} onChange={e=>setCatalogFilter(e.target.value)}/><table><thead><tr><th>Nomi</th><th>Qoldiq / qarz</th></tr></thead><tbody>{((data?.[catalogKind]||[]) as Item[]).filter(x=>x.name.toLowerCase().includes(catalogFilter.toLowerCase())).map(x=><tr key={x.id}><td>{x.name}</td><td>{x.stock!==undefined?String(x.stock)+' '+String(x.unit):x.receivable!==undefined?String(x.receivable)+' UZS':x.payable!==undefined?String(x.payable)+' UZS':x.balance!==undefined?String(x.balance)+' UZS':'—'}</td></tr>)}</tbody></table></div></div>}
+ {tab==='catalog'&&<div className="columns"><form className="panel form" onSubmit={saveCatalog}><h2>Yangi yozuv</h2><label>Bo‘lim<select value={catalogKind} onChange={e=>{setCatalogKind(e.target.value as typeof catalogKind);setCatalog({});}}><option value="products">Mahsulotlar</option><option value="dealers">Dilerlar</option><option value="accounts">Pul hisoblari (faqat rahbar)</option><option value="suppliers">Yetkazib beruvchilar</option></select></label>{catalogFields[catalogKind].map(([key,title])=><label key={key}>{title}{key==='isRaw'?<select value={catalog[key]||'false'} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}><option value="false">Tayyor mahsulot</option><option value="true">Xomashyo</option></select>:key==='unit'?<select required value={catalog[key]||''} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}><option value="">Birlikni tanlang</option><option value="kg">kg</option><option value="qop">qop</option><option value="dona">dona</option><option value="litr">litr</option></select>:<input required value={catalog[key]||''} onChange={e=>setCatalog(s=>({...s,[key]:e.target.value}))}/>}</label>)}<button disabled={busy}>Qo‘shish</button></form><div className="panel"><h2>Joriy ma’lumotlar</h2><input placeholder="Ro‘yxatdan qidirish" value={catalogFilter} onChange={e=>setCatalogFilter(e.target.value)}/><table><thead><tr><th>Nomi</th><th>Qoldiq / qarz</th></tr></thead><tbody>{((data?.[catalogKind]||[]) as Item[]).filter(x=>x.name.toLowerCase().includes(catalogFilter.toLowerCase())).map(x=><tr key={x.id}><td>{editingCatalog===x.id?<input aria-label="Nomi" value={editCatalogValues.name||''} onChange={e=>setEditCatalogValues(v=>({...v,name:e.target.value}))}/>:x.name}</td><td>{editingCatalog===x.id?<div style={{display:'grid',gap:6}}>
+ {catalogKind==='products'&&<select value={editCatalogValues.unit||''} onChange={e=>setEditCatalogValues(v=>({...v,unit:e.target.value}))}><option value="kg">kg</option><option value="qop">qop</option><option value="dona">dona</option><option value="litr">litr</option></select>}
+ {catalogKind==='dealers'&&<input aria-label="Viloyat" value={editCatalogValues.region||''} onChange={e=>setEditCatalogValues(v=>({...v,region:e.target.value}))}/>}
+ <button type="button" className="ghost" disabled={busy} onClick={()=>void saveCatalogEdit()}>Saqlash</button>
+ <button type="button" className="ghost" onClick={()=>setEditingCatalog(null)}>Bekor qilish</button></div>:x.stock!==undefined?String(x.stock)+' '+String(x.unit):x.receivable!==undefined?String(x.receivable)+' UZS':x.payable!==undefined?String(x.payable)+' UZS':x.balance!==undefined?String(x.balance)+' UZS':'—'}</td><td>{catalogKind!=='accounts'&&editingCatalog!==x.id&&<button type="button" className="ghost" onClick={()=>{setEditingCatalog(x.id);setEditCatalogValues({name:x.name,unit:String(x.unit||''),region:String(x.region||'')});}}>Tahrirlash</button>}</td></tr>)}</tbody></table></div></div>}
  </section></main>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
