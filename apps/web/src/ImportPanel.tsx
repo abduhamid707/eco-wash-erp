@@ -17,7 +17,7 @@ export function ImportPanel({api,token}:Props){
  }
 
  async function uploadFile(file:File){
-  setBusy(true);setError('');setPreview(null);
+  setBusy(true);setError('');setPreview(null);setApproval('');
   try{
    const form=new FormData();form.append('file',file);
    const response=await fetch('/api/import/parse-file',{method:'POST',headers:{Authorization:'Bearer '+token},body:form});
@@ -50,8 +50,9 @@ export function ImportPanel({api,token}:Props){
    const result=await api('/import/preview','POST',{rows});setPreview(result);setRows(rows);
   }catch(e){setError(String(e));}finally{setBusy(false);}
  }
- return <div className="panel"><h2>Eski Excel ma’lumotlarini tekshirish</h2>
- <p className="muted">Bu bo‘lim faqat importdan oldingi tekshiruv. Hech narsa bazaga ko‘chmaydi. Rahbar tasdiqlamaguncha real qoldiq o‘zgarmaydi.</p>
+ const stage=imported?3:preview?preview.invalid>0?2:3:1;
+ return <div className="panel"><h2>Eski Excel ma’lumotlarini tekshirish</h2><div className="import-steps"><span className={stage>=1?'active':''}>1. Faylni tanlash</span><span className={stage>=2?'active':''}>2. Xatolarni tekshirish</span><span className={stage>=3?'active':''}>3. Rahbar tasdig‘i</span></div>
+ <p className="muted">Avval faylni yuklang, keyin xatolarni tekshiring. Oxirgi bosqichda rahbar tasdiqlamaguncha real qoldiq o‘zgarmaydi.</p>
  <div className="reportactions"><button className="ghost" type="button" onClick={()=>void download()}>↓ Import uchun Excel shabloni</button></div>
  <label style={{display:'block',margin:'18px 0'}}>To‘ldirilgan Excel faylni tanlang<input type="file" accept=".xlsx" disabled={busy} onChange={e=>{const file=e.target.files?.[0];if(file)void uploadFile(file);}}/></label>
  <p className="muted">Yoki Excel ustunlarini quyidagi maydonga qo‘lda nusxalang.</p><form onSubmit={check} className="form" style={{maxWidth:'100%'}}><label>Excel shablonidagi satrlarni, sarlavhasi bilan, nusxalab shu yerga qo‘ying
