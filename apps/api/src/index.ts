@@ -133,7 +133,7 @@ app.post('/accounts', { preHandler: gate(['OWNER']) }, async(req,reply)=>{
 app.post('/operations', { preHandler: gate(financeRoles.concat('WAREHOUSE')) }, async (req,reply) => {
  const b=commandBody.parse(req.body);
  if(['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING','INVENTORY_ADJUSTMENT','ACCOUNT_OPENING'].includes(b.command.type) && req.session!.role!=='OWNER') return reply.code(403).send({error:'OWNER_ONLY'});
- if (req.session!.role==='WAREHOUSE' && !['STOCK_RECEIPT','SUPPLIER_RECEIPT'].includes(b.command.type)) return reply.code(403).send({error:'FORBIDDEN'});
+ if (req.session!.role==='WAREHOUSE' && b.command.type!=='STOCK_RECEIPT') return reply.code(403).send({error:'FORBIDDEN'});
  const hash=createHash('sha256').update(JSON.stringify(b.command)).digest('hex');
  // Serializability plus a transaction-level advisory lock serialize financial postings across API replicas.
  const op=await prisma.$transaction(async tx=>{
