@@ -163,7 +163,7 @@ function App(){
  {tab==='recipes'&&<RecipePanel api={api} products={data?.products||[]} onSaved={refresh}/>}
  {tab==='staff'&&<StaffPanel api={api} accounts={data?.accounts||[]} onSaved={refresh} role={role}/>}
  
- {tab==='reports'&&<ReportsPanel api={api} downloadExcel={downloadExcel}/>}
+ {tab==='reports'&&<ReportsPanel api={api} downloadExcel={downloadExcel} isOwner={isOwner}/>}
  {tab==='pending'&&<PendingPanel userId={userId} sync={()=>syncPending()} syncing={syncing} onChanged={()=>updatePending()}/>}
  {tab==='statements'&&<StatementsPanel api={api} dealers={data?.dealers||[]} suppliers={data?.suppliers||[]}/>}
  {tab==='users'&&<UsersPanel api={api}/>}
