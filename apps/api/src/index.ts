@@ -107,6 +107,51 @@ app.patch('/users/:id', {preHandler:gate(['OWNER'])}, async(req,reply)=>{
 });
 
 app.get('/me', { preHandler: gate(allRoles) }, async req => prisma.user.findUnique({where:{id:req.session!.id},select:{id:true,name:true,role:true}}));
+
+app.patch('/products/:id', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const params=z.object({id}).parse(req.params);
+ const body=z.object({name:z.string().min(2).max(200).optional(),unit:z.enum(['kg','qop','dona','litr']).optional(),active:z.boolean().optional()}).refine(x=>Object.keys(x).length>0).parse(req.body);
+ const updated=await prisma.$transaction(async tx=>{
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(773301)`;
+  const old=await tx.product.findUnique({where:{id:params.id}});
+  if(!old)return null;
+  if((body.unit&&body.unit!==old.unit)||(body.active===false)){
+   if(!old.stock.eq(0))insufficient('PRODUCT_HAS_STOCK');
+   const used=await tx.inventoryMovement.count({where:{productId:params.id}});
+   if(body.unit&&body.unit!==old.unit&&used)insufficient('UNIT_LOCKED_AFTER_MOVEMENTS');
+  }
+  const result=await tx.product.update({where:{id:params.id},data:body});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'PRODUCT_UPDATE',entityType:'Product',entityId:result.id,before:{name:old.name,unit:old.unit,active:old.active},after:{name:result.name,unit:result.unit,active:result.active}}});
+  return result;
+ });
+ if(!updated)return reply.code(404).send({error:'PRODUCT_NOT_FOUND'});
+ return {id:updated.id,name:updated.name,unit:updated.unit,active:updated.active};
+});
+app.patch('/dealers/:id', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const params=z.object({id}).parse(req.params);
+ const body=z.object({name:z.string().min(2).max(200).optional(),region:z.string().min(2).max(120).optional(),active:z.boolean().optional()}).refine(x=>Object.keys(x).length>0).parse(req.body);
+ const previous=await prisma.dealer.findUnique({where:{id:params.id}});
+ if(!previous)return reply.code(404).send({error:'DEALER_NOT_FOUND'});
+ if(body.active===false&&!previous.receivable.eq(0))return reply.code(409).send({error:'DEALER_HAS_DEBT'});
+ return prisma.$transaction(async tx=>{
+  const current=await tx.dealer.update({where:{id:params.id},data:body});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'DEALER_UPDATE',entityType:'Dealer',entityId:current.id,before:{name:previous.name,region:previous.region,active:previous.active},after:{name:current.name,region:current.region,active:current.active}}});
+  return {id:current.id,name:current.name,region:current.region,active:current.active};
+ });
+});
+app.patch('/suppliers/:id', {preHandler:gate(financeRoles)}, async(req,reply)=>{
+ const params=z.object({id}).parse(req.params);
+ const body=z.object({name:z.string().min(2).max(200).optional(),active:z.boolean().optional()}).refine(x=>Object.keys(x).length>0).parse(req.body);
+ const previous=await prisma.supplier.findUnique({where:{id:params.id}});
+ if(!previous)return reply.code(404).send({error:'SUPPLIER_NOT_FOUND'});
+ if(body.active===false&&!previous.payable.eq(0))return reply.code(409).send({error:'SUPPLIER_HAS_DEBT'});
+ return prisma.$transaction(async tx=>{
+  const current=await tx.supplier.update({where:{id:params.id},data:body});
+  await tx.auditLog.create({data:{actorId:req.session!.id,action:'SUPPLIER_UPDATE',entityType:'Supplier',entityId:current.id,before:{name:previous.name,active:previous.active},after:{name:current.name,active:current.active}}});
+  return {id:current.id,name:current.name,active:current.active};
+ });
+});
+
 app.get('/products', { preHandler: gate(allRoles) }, async () => prisma.product.findMany({orderBy:{name:'asc'}}).then(a=>a.map(x=>({...x,stock:x.stock.toString()}))));
 app.post('/products', { preHandler: gate(stockRoles) }, async (req,reply)=>{
  const b=z.object({sku:z.string().min(1),name:z.string().min(2),unit:z.string().min(1),isRaw:z.boolean().default(false)}).parse(req.body);
