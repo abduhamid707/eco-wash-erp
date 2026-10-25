@@ -3,6 +3,7 @@ type API=(path:string,method?:string,payload?:unknown)=>Promise<any>;
 type User={id:string;name:string;login:string;role:string;active:boolean};
 const roles:Record<string,string>={OWNER:'Rahbar',MANAGER:'Menejer',ATTENDANCE:'Davomatchi',WAREHOUSE:'Omborchi'};
 export function UsersPanel({api}:{api:API}){
+ const [resetTarget,setResetTarget]=useState<User|null>(null),[newPassword,setNewPassword]=useState('');
  const [users,setUsers]=useState<User[]>([]),[name,setName]=useState(''),[login,setLogin]=useState(''),[password,setPassword]=useState(''),[role,setRole]=useState('MANAGER'),[error,setError]=useState(''),[ok,setOk]=useState(''),[busy,setBusy]=useState(false);
  const reload=async()=>{try{setUsers(await api('/users'));}catch(e){setError(String(e));}};
  useEffect(()=>{void reload();},[]);
@@ -13,12 +14,11 @@ export function UsersPanel({api}:{api:API}){
   setBusy(true);setError('');
   try{await api('/users/'+user.id,'PATCH',{role:nextRole});setOk('Rol yangilandi');await reload();}catch(e){setError(String(e));}finally{setBusy(false);}
  };
- const resetPassword=async(user:User)=>{
-  const pwd=prompt(user.name+' uchun yangi parol (kamida 12 belgi):');
-  if(pwd===null)return;
-  if(pwd.length<12){setError('Parol kamida 12 belgidan iborat bo‘lsin');return;}
-  setBusy(true);setError('');
-  try{await api('/users/'+user.id,'PATCH',{password:pwd});setOk('Parol yangilandi');}catch(e){setError(String(e));}finally{setBusy(false);}
+ const resetPassword=async()=>{
+  if(!resetTarget||newPassword.length<12){setError('Parol kamida 12 belgidan iborat bo‘lsin');return;}
+  setBusy(true);setError('');setOk('');
+  try{await api('/users/'+resetTarget.id,'PATCH',{password:newPassword});setOk('Parol yangilandi');setResetTarget(null);setNewPassword('');}
+  catch(e){setError(String(e));}finally{setBusy(false);}
  };
  const toggle=async(user:User)=>{if(!confirm(user.name+' hisobini '+(user.active?'o‘chirasizmi?':'faollashtirasizmi?')))return;setBusy(true);setError('');try{await api('/users/'+user.id,'PATCH',{active:!user.active});await reload();}catch(e){setError(String(e));}finally{setBusy(false);}};
  return <div className="columns"><form className="panel form" onSubmit={add}><h2>Yangi foydalanuvchi</h2><p className="muted">Faqat rahbar boshqa xodimga kirish huquqini berishi mumkin.</p>{error&&<div className="notice error">{error}</div>}{ok&&<div className="notice success">{ok}</div>}
@@ -27,5 +27,7 @@ export function UsersPanel({api}:{api:API}){
  <label>Parol (kamida 12 belgi)<input type="password" autoComplete="new-password" minLength={12} required value={password} onChange={e=>setPassword(e.target.value)}/></label>
  <label>Huquqi<select value={role} onChange={e=>setRole(e.target.value)}>{Object.entries(roles).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
  <button disabled={busy}>Foydalanuvchi qo‘shish</button></form>
- <div className="panel"><h2>Tizim foydalanuvchilari</h2>{users.map(x=><div className="history" key={x.id}><span><b>{x.name}</b><small style={{display:'block'}}>{x.login} · {roles[x.role]||x.role}</small></span><div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}><select aria-label="Xodim roli" style={{width:110,fontSize:12,padding:7}} disabled={busy} value={x.role} onChange={e=>void updateRole(x,e.target.value)}>{Object.entries(roles).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><button className="ghost" disabled={busy} onClick={()=>void resetPassword(x)}>Parol</button><button className="ghost" disabled={busy} onClick={()=>void toggle(x)}>{x.active?'Faolsizlantirish':'Faollashtirish'}</button></div></div>)}</div></div>;
+ <div className="panel"><h2>Tizim foydalanuvchilari</h2>{users.map(x=><div className="history" key={x.id}><span><b>{x.name}</b><small style={{display:'block'}}>{x.login} · {roles[x.role]||x.role}</small></span><div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap'}}><select aria-label="Xodim roli" style={{width:110,fontSize:12,padding:7}} disabled={busy} value={x.role} onChange={e=>void updateRole(x,e.target.value)}>{Object.entries(roles).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select><button className="ghost" disabled={busy} onClick={()=>{setResetTarget(x);setNewPassword('');}}>Parol</button><button className="ghost" disabled={busy} onClick={()=>void toggle(x)}>{x.active?'Faolsizlantirish':'Faollashtirish'}</button></div></div>)}</div>
+ {resetTarget&&<div className="panel" style={{marginTop:20}}><h3>{resetTarget.name} — parolni yangilash</h3><p className="muted">Yangi parolni faqat xodimga xavfsiz usulda bering.</p><label>Yangi parol<input type="password" autoComplete="new-password" minLength={12} value={newPassword} onChange={e=>setNewPassword(e.target.value)}/></label><div className="reportactions"><button disabled={busy||newPassword.length<12} onClick={()=>void resetPassword()}>Parolni saqlash</button><button className="ghost" onClick={()=>{setResetTarget(null);setNewPassword('');}}>Bekor qilish</button></div></div>}
+ </div>;
 }
