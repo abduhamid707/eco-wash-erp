@@ -88,14 +88,17 @@ function App(){
   const command:Record<string,string>={type:kind,occurredAt:new Date().toISOString()};
   for(const [key,,type] of fields[kind])if(values[key]?.trim())command[key]=(type==='number'||type==='nonnegative')?values[key].trim():values[key];
   const payload={idempotencyKey:crypto.randomUUID(),command};
+  const offlineRestricted=['VOID_OPERATION','INVENTORY_ADJUSTMENT','ACCOUNT_OPENING','DEALER_OPENING','SUPPLIER_OPENING','DEALER_RETURN','SUPPLIER_RETURN'];
+  const canQueueOffline=!offlineRestricted.includes(kind);
   try{
    if(!navigator.onLine){
+    if(!canQueueOffline)throw new Error('Bu amal xavfsizlik sababli faqat internet mavjud bo‘lganda bajariladi.');
     if(!userId)throw new Error('Offline yozish uchun foydalanuvchi tekshirilmagan');await addPending(payload.idempotencyKey,payload,userId);setValues({});
     setMessage('Qurilmada saqlandi. Server hali tasdiqlamadi.');await updatePending();return;
    }
    try{await api('/operations','POST',payload);}
    catch(error){
-    if(error instanceof TypeError){if(!userId)throw new Error('Foydalanuvchi tasdiqlanmagan');await addPending(payload.idempotencyKey,payload,userId);setValues({});setMessage('Internet uzildi. Amal lokal navbatga yozildi, server tasdiqlamadi.');await updatePending();return;}
+    if(error instanceof TypeError){if(!canQueueOffline)throw new Error('Server tasdig‘i noma’lum. Qoldiqni yangilab, qaytadan tekshiring.');if(!userId)throw new Error('Foydalanuvchi tasdiqlanmagan');await addPending(payload.idempotencyKey,payload,userId);setValues({});setMessage('Internet uzildi. Amal lokal navbatga yozildi, server tasdiqlamadi.');await updatePending();return;}
     throw error;
    }
    setValues({});setMessage('Operatsiya serverda tasdiqlandi');await refresh();
