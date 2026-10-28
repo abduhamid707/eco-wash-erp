@@ -1,0 +1,11 @@
+# ECO WASH ERP UX Contract
+- Navigation owner: authenticated `eco-sidebar` in `apps/web/src/main.tsx`; responsive styles in `apps/web/src/style.css`.
+- Active destination is visually distinguished and exposed with `aria-current=page`; expandable groups use `aria-expanded`.
+- On mobile, hamburger opens a modal-like drawer with backdrop; choosing destination closes it.
+- Desktop collapsible sidebar keeps navigation icons and accessible titles; no business data changes from navigation.
+- Header actions: refresh always, Excel for finance roles, sync only when pending operations exist.
+- Sidebar itself scrolls; footer signout stays accessible. Page content scrolls independently of sidebar at desktop.
+- Core transactions remain server-authoritative, role-scoped, and cannot be changed by presentational redesign.
+- Preserve form values after request failure; disabled buttons must explain pending state.
+- No destructive action without explicit confirmation.
+- Do not invent dates, financial totals or server statuses.

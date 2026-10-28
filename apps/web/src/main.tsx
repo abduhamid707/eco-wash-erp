@@ -10,6 +10,7 @@ import { UsersPanel } from './UsersPanel';
 import { StatementsPanel } from './StatementsPanel';
 import { PendingPanel } from './PendingPanel';
 import { AnalyticsPanel } from './AnalyticsPanel';
+import { LayoutDashboard, Package2, Factory, Truck, WalletCards, UsersRound, Settings2, CloudUpload, ChevronDown, ChevronRight, PanelLeftClose, PanelLeftOpen, Menu, X, LogOut, RefreshCw, Download, Wifi, WifiOff, ShieldCheck, ArrowLeftRight, Boxes, ClipboardList, ReceiptText, BookOpenText, FileSpreadsheet, UserCog, Search, CircleHelp } from 'lucide-react';
 type Item={id:string;name:string;[key:string]:unknown};
 type Snapshot={products:Item[];dealers:Item[];accounts:Item[];suppliers:Item[];operationCount:number};
 type CommandType='ACCOUNT_OPENING'|'INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_RETURN'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
@@ -24,6 +25,8 @@ function App(){
  const [login,setLogin]=useState(localStorage.getItem('eco_saved_login')||''),[password,setPassword]=useState('');
  const [showPassword,setShowPassword]=useState(false);
  const [openGroup,setOpenGroup]=useState('');
+ const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+ const [mobileNavOpen,setMobileNavOpen]=useState(false);
  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
  const [data,setData]=useState<Snapshot|null>(null),[tab,setTab]=useState<'dashboard'|'operations'|'catalog'|'staff'|'recipes'|'reports'|'import'|'users'|'statements'|'pending'>('dashboard');
  const [kind,setKind]=useState<CommandType>('STOCK_RECEIPT');
@@ -191,37 +194,44 @@ function App(){
    </section>
   </div>
  </main>;
- return <main className="app"><aside><div className="logo">ECO WASH <span>ERP</span></div><p>Korxona boshqaruvi</p><nav className="erp-nav">
- <button className={tab==='dashboard'?'selected':''} onClick={()=>setTab('dashboard')}>◫ Bosh sahifa</button>
- <button className={tab==='pending'?'selected':''} onClick={()=>setTab('pending')}>↥ Offline navbat ({pending})</button>
- {(canFinance||role==='WAREHOUSE')&&<>
- <button className="nav-group-toggle" onClick={()=>setOpenGroup(g=>g==='warehouse'?'':'warehouse')}>▤ Ombor va ishlab chiqarish <span>{openGroup==='warehouse'?'⌃':'⌄'}</span></button>
- {openGroup==='warehouse'&&<div className="nav-children">
- <button className={tab==='catalog'?'selected':''} onClick={()=>setTab('catalog')}>Mahsulotlar va xomashyo</button>
- <button className={tab==='operations'?'selected':''} onClick={()=>{setTab('operations');setKind('STOCK_RECEIPT');}}>Kirim va chiqim</button>
- {canFinance&&<button className={tab==='recipes'?'selected':''} onClick={()=>setTab('recipes')}>Retseptlar</button>}
- </div>}</>}
- {canFinance&&<>
- <button className="nav-group-toggle" onClick={()=>setOpenGroup(g=>g==='sales'?'':'sales')}>♧ Savdo va dilerlar <span>{openGroup==='sales'?'⌃':'⌄'}</span></button>
- {openGroup==='sales'&&<div className="nav-children">
- <button onClick={()=>{setTab('operations');setKind('SHIPMENT');}}>Yuk jo‘natish</button>
- <button onClick={()=>{setTab('operations');setKind('DEALER_PAYMENT');}}>To‘lov kiritish</button>
- <button className={tab==='statements'?'selected':''} onClick={()=>setTab('statements')}>Qarz tarixi</button>
- </div>}
- <button className="nav-group-toggle" onClick={()=>setOpenGroup(g=>g==='finance'?'':'finance')}>▤ Moliya <span>{openGroup==='finance'?'⌃':'⌄'}</span></button>
- {openGroup==='finance'&&<div className="nav-children">
- <button className={tab==='reports'?'selected':''} onClick={()=>setTab('reports')}>Hisobotlar</button>
- <button onClick={()=>{setTab('operations');setKind('EXPENSE');}}>Xarajatlar</button>
- <button onClick={()=>{setTab('operations');setKind('ACCOUNT_TRANSFER');}}>Kassa o‘tkazmalari</button>
- </div>}</>}
- {(canFinance||role==='ATTENDANCE')&&<button className={tab==='staff'?'selected':''} onClick={()=>setTab('staff')}>♙ Xodimlar va davomat</button>}
- {isOwner&&<>
- <button className="nav-group-toggle" onClick={()=>setOpenGroup(g=>g==='settings'?'':'settings')}>⚙ Sozlamalar <span>{openGroup==='settings'?'⌃':'⌄'}</span></button>
- {openGroup==='settings'&&<div className="nav-children">
- <button className={tab==='import'?'selected':''} onClick={()=>setTab('import')}>Excel import</button>
- <button className={tab==='users'?'selected':''} onClick={()=>setTab('users')}>Foydalanuvchilar</button>
- </div>}</>}
- </nav><button className="logout" onClick={()=>{sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_user_id');sessionStorage.removeItem('eco_role');localStorage.removeItem('eco_token');localStorage.removeItem('eco_user_id');localStorage.removeItem('eco_role');setRole('');setUserId('');setToken('');setData(null);setTab('dashboard');}}>Chiqish</button></aside><section className="content"><div className="top"><div><p className="eyebrow">ECO WASH / ISH PANELI</p><h1>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Ishchilar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excelni ko‘chirish':tab==='users'?'Xodimlar kirishi':tab==='statements'?'Qarz tafsiloti':tab==='pending'?'Offline navbat':'Ma’lumotnomalar'}</h1></div><div className="topactions"><span className={isOnline?"connection-pill online":"connection-pill offline"} role="status">{isOnline?"● Online":"● Offline"}</span><button className="ghost" onClick={()=>void refresh()}>↻ Yangilash</button>{canFinance&&<button className="ghost" onClick={()=>void downloadExcel()}>↓ Excel</button>}<button className="ghost" disabled={!pending||syncing} onClick={()=>void syncPending()}>↥ Sinxronlash ({pending})</button></div></div>{error&&<div className="notice error">{error}</div>}{message&&<div className="notice success">{message}</div>}
+ return <main className={sidebarCollapsed?'app eco-shell sidebar-collapsed':'app eco-shell'}>
+ {mobileNavOpen&&<button type="button" className="eco-backdrop" aria-label="Menyuni yopish" onClick={()=>setMobileNavOpen(false)}/>}
+ <aside className={mobileNavOpen?'eco-sidebar mobile-open':'eco-sidebar'}>
+  <div className="eco-side-brand"><div className="eco-brand-symbol"><Factory size={21} strokeWidth={1.8}/></div><div className="eco-brand-words"><strong>ECO WASH</strong><span>ERP / FACTORY OPERATIONS</span></div><button type="button" className="eco-icon-button eco-collapse-button" aria-label={sidebarCollapsed?'Menyuni kengaytirish':'Menyuni yig‘ish'} onClick={()=>setSidebarCollapsed(v=>!v)}>{sidebarCollapsed?<PanelLeftOpen size={17}/>:<PanelLeftClose size={17}/>}</button><button type="button" className="eco-icon-button eco-mobile-close" aria-label="Menyuni yopish" onClick={()=>setMobileNavOpen(false)}><X size={19}/></button></div>
+  <div className="eco-workspace"><span className="eco-workspace-icon"><Factory size={17}/></span><div className="eco-workspace-text"><strong>ECO WASH</strong><span>Ishlab chiqarish korxonasi</span></div><ChevronDown size={14} className="eco-workspace-arrow"/></div>
+  <div className="eco-nav-scroll"><nav className="erp-nav" aria-label="Asosiy navigatsiya">
+    <span className="eco-nav-caption">ISH PANELI</span>
+    <button title="Bosh sahifa" className={tab==='dashboard'?'eco-nav-link selected':'eco-nav-link'} aria-current={tab==='dashboard'?'page':undefined} onClick={()=>{setTab('dashboard');setMobileNavOpen(false);}}><LayoutDashboard size={18}/><span>Bosh sahifa</span></button>
+    <button title="Offline navbat" className={tab==='pending'?'eco-nav-link selected':'eco-nav-link'} aria-current={tab==='pending'?'page':undefined} onClick={()=>{setTab('pending');setMobileNavOpen(false);}}><CloudUpload size={18}/><span>Offline navbat</span>{pending>0&&<span className="eco-nav-count">{pending}</span>}</button>
+    <span className="eco-nav-caption eco-section-gap">BOSHQARUV</span>
+    {(canFinance||role==='WAREHOUSE')&&<><button title="Ombor va ishlab chiqarish" className={'eco-nav-link eco-nav-parent'+(openGroup==='warehouse'?' expanded':'')} aria-expanded={openGroup==='warehouse'} onClick={()=>{setOpenGroup(g=>g==='warehouse'?'':'warehouse');setSidebarCollapsed(false);}}><Boxes size={18}/><span>Ombor va ishlab chiqarish</span><ChevronDown size={15} className="eco-chevron"/></button>
+    {openGroup==='warehouse'&&<div className="eco-nav-children">
+      <button className={tab==='catalog'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('catalog');setMobileNavOpen(false);}}><Package2 size={15}/>Mahsulot va xomashyo</button>
+      <button className={tab==='operations'&&kind==='STOCK_RECEIPT'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('operations');setKind('STOCK_RECEIPT');setMobileNavOpen(false);}}><ArrowLeftRight size={15}/>Kirim va chiqim</button>
+      {canFinance&&<button className={tab==='recipes'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('recipes');setMobileNavOpen(false);}}><BookOpenText size={15}/>Retseptlar</button>}
+    </div>}</>}
+    {canFinance&&<><button title="Savdo va dilerlar" className={'eco-nav-link eco-nav-parent'+(openGroup==='sales'?' expanded':'')} aria-expanded={openGroup==='sales'} onClick={()=>{setOpenGroup(g=>g==='sales'?'':'sales');setSidebarCollapsed(false);}}><Truck size={18}/><span>Savdo va dilerlar</span><ChevronDown size={15} className="eco-chevron"/></button>
+    {openGroup==='sales'&&<div className="eco-nav-children">
+      <button className="eco-child-link" onClick={()=>{setTab('operations');setKind('SHIPMENT');setMobileNavOpen(false);}}><Truck size={15}/>Yuk jo‘natish</button>
+      <button className="eco-child-link" onClick={()=>{setTab('operations');setKind('DEALER_PAYMENT');setMobileNavOpen(false);}}><ReceiptText size={15}/>To‘lov kiritish</button>
+      <button className={tab==='statements'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('statements');setMobileNavOpen(false);}}><ClipboardList size={15}/>Qarz tarixi</button>
+    </div>}
+    <button title="Moliya" className={'eco-nav-link eco-nav-parent'+(openGroup==='finance'?' expanded':'')} aria-expanded={openGroup==='finance'} onClick={()=>{setOpenGroup(g=>g==='finance'?'':'finance');setSidebarCollapsed(false);}}><WalletCards size={18}/><span>Moliya</span><ChevronDown size={15} className="eco-chevron"/></button>
+    {openGroup==='finance'&&<div className="eco-nav-children">
+      <button className={tab==='reports'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('reports');setMobileNavOpen(false);}}><ClipboardList size={15}/>Hisobotlar</button>
+      <button className="eco-child-link" onClick={()=>{setTab('operations');setKind('EXPENSE');setMobileNavOpen(false);}}><ReceiptText size={15}/>Xarajatlar</button>
+      <button className="eco-child-link" onClick={()=>{setTab('operations');setKind('ACCOUNT_TRANSFER');setMobileNavOpen(false);}}><ArrowLeftRight size={15}/>Kassa o‘tkazmalari</button>
+    </div>}</>}
+    {(canFinance||role==='ATTENDANCE')&&<button title="Xodimlar va davomat" className={tab==='staff'?'eco-nav-link selected':'eco-nav-link'} aria-current={tab==='staff'?'page':undefined} onClick={()=>{setTab('staff');setMobileNavOpen(false);}}><UsersRound size={18}/><span>Xodimlar va davomat</span></button>}
+    {isOwner&&<><span className="eco-nav-caption eco-section-gap">TIZIM</span><button title="Sozlamalar" className={'eco-nav-link eco-nav-parent'+(openGroup==='settings'?' expanded':'')} aria-expanded={openGroup==='settings'} onClick={()=>{setOpenGroup(g=>g==='settings'?'':'settings');setSidebarCollapsed(false);}}><Settings2 size={18}/><span>Sozlamalar</span><ChevronDown size={15} className="eco-chevron"/></button>
+    {openGroup==='settings'&&<div className="eco-nav-children"><button className={tab==='import'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('import');setMobileNavOpen(false);}}><FileSpreadsheet size={15}/>Excel import</button><button className={tab==='users'?'eco-child-link selected':'eco-child-link'} onClick={()=>{setTab('users');setMobileNavOpen(false);}}><UserCog size={15}/>Foydalanuvchilar</button></div>}</>}
+   </nav></div>
+   <div className="eco-sidebar-bottom"><div className="eco-sidebar-help"><CircleHelp size={16}/><span>Ichki boshqaruv tizimi</span></div><button className="eco-signout" onClick={()=>{sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_user_id');sessionStorage.removeItem('eco_role');localStorage.removeItem('eco_token');localStorage.removeItem('eco_user_id');localStorage.removeItem('eco_role');setRole('');setUserId('');setToken('');setData(null);setTab('dashboard');}} title="Chiqish"><LogOut size={17}/><span>Tizimdan chiqish</span></button></div>
+  </aside>
+  <section className="content eco-content">
+   <header className="eco-header"><div className="eco-header-start"><button type="button" className="eco-header-icon eco-menu-toggle" aria-label="Menyuni ochish" onClick={()=>setMobileNavOpen(true)}><Menu size={20}/></button><div className="eco-header-location"><span>ECO WASH <ChevronRight size={13}/> Boshqaruv</span><strong>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Xodimlar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excel import':tab==='users'?'Foydalanuvchilar':tab==='statements'?'Qarz tarixi':tab==='pending'?'Offline navbat':'Ma’lumotnomalar'}</strong></div></div><div className="eco-header-actions"><span className={isOnline?'eco-connection online':'eco-connection offline'} role="status">{isOnline?<Wifi size={14}/>:<WifiOff size={14}/>}<span>{isOnline?'Ulangan':'Offline'}</span></span><span className="eco-header-rule"/><button type="button" className="eco-header-icon" title="Yangilash" aria-label="Ma’lumotlarni yangilash" onClick={()=>void refresh()}><RefreshCw size={18}/></button>{canFinance&&<button type="button" className="eco-header-export" onClick={()=>void downloadExcel()}><Download size={16}/><span>Excel</span></button>}{pending>0&&<button type="button" className="eco-header-sync" disabled={syncing} onClick={()=>void syncPending()}><CloudUpload size={16}/> Sinxronlash ({pending})</button>}<div className="eco-avatar" title={role==='OWNER'?'Rahbar':role==='MANAGER'?'Menejer':role==='WAREHOUSE'?'Omborchi':'Davomatchi'}>{role==='OWNER'?'R':role==='MANAGER'?'M':role==='WAREHOUSE'?'O':'D'}</div></div></header>
+   <div className="eco-page"><div className="eco-page-heading"><div><span className="eco-page-eyebrow">KORXONA BOSHQARUVI</span><h1>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Xodimlar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excelni ko‘chirish':tab==='users'?'Xodimlar kirishi':tab==='statements'?'Qarz tafsiloti':tab==='pending'?'Offline navbat':'Ma’lumotnomalar'}</h1></div><span className="eco-heading-context">ECO WASH <span className="eco-heading-dot"/> ERP</span></div>
+ {error&&<div className="notice error">{error}</div>}{message&&<div className="notice success">{message}</div>}
  {tab==='dashboard'&&<><AnalyticsPanel api={api} enabled={canFinance}/><div className="stats"><article><small>Ombor pozitsiyalari</small><strong>{data?.products.length??'—'}</strong></article><article><small>Dilerlar</small><strong>{data?.dealers.length??'—'}</strong></article><article><small>Jami diler qarzi (UZS)</small><strong>{n(data?.dealers.reduce((a,b)=>a+Number(b.receivable),0))}</strong></article><article><small>Operatsiyalar</small><strong>{data?.operationCount??'—'}</strong></article></div><div className="columns"><div className="panel"><h2>Ombor qoldig‘i</h2><table><thead><tr><th>Mahsulot</th><th>Qoldiq</th></tr></thead><tbody>{data?.products.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.stock)} {String(x.unit)}</td></tr>)}</tbody></table></div><div className="panel"><h2>Diler qarzlari</h2><table><thead><tr><th>Diler</th><th>Qarz</th></tr></thead><tbody>{data?.dealers.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.receivable)}</td></tr>)}</tbody></table><h2>Pul hisoblari</h2><table><tbody>{data?.accounts.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.balance)} UZS</td></tr>)}</tbody></table></div></div></>}
  {tab==='operations'&&<div className="columns"><form className="panel form" onSubmit={saveOperation}><h2>Operatsiyani kiritish</h2><label>Amal turi<select value={kind} onChange={e=>{setKind(e.target.value as CommandType);setValues({});}}>{Object.entries(labels).filter(([k])=>role==='OWNER'||(role==='WAREHOUSE'?k==='STOCK_RECEIPT':!['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING','INVENTORY_ADJUSTMENT','ACCOUNT_OPENING'].includes(k))).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>{fields[kind].map(([key,title,type])=><label key={key}>{title}{['products','dealers','accounts','suppliers','recipes'].includes(type)?<select required value={values[key]||''} onChange={e=>set(key,e.target.value)}><option value="">Tanlang</option>{(type==='recipes'?recipes:((data?.[type as keyof Snapshot]||[]) as Item[])).map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select>:['targetId','shipmentId','purchaseId'].includes(key)?<><select required value={values[key]||''} onChange={e=>set(key,e.target.value)}><option value="">Oxirgi operatsiyalardan tanlang</option>{history.filter(op=>key==='shipmentId'?op.type==='SHIPMENT'&&op.status==='POSTED':key==='purchaseId'?op.type==='SUPPLIER_RECEIPT'&&op.status==='POSTED':op.status==='POSTED').map(op=><option key={op.id} value={op.id}>{labels[op.type as CommandType]||op.type} — {new Date(op.createdAt).toLocaleDateString('uz-UZ')} — {op.id.slice(0,8)}</option>)}</select><small className="muted">Eski operatsiya ro‘yxatda bo‘lmasa, uning ID sini kiriting</small><input value={values[key]||''} onChange={e=>set(key,e.target.value)} placeholder="Operatsiya ID (UUID)"/></>:<input type={type==='nonnegative'?'number':type} min={type==='nonnegative'?'0':type==='number'?'0.0001':undefined} step={type==='number'||type==='nonnegative'?'any':undefined} required={!['unitCost','description'].includes(key)} value={values[key]||''} onChange={e=>set(key,e.target.value)}/>}</label>)}<button disabled={busy}>{busy?'Saqlanmoqda...':'Serverga saqlash'}</button><small className="muted">Offline yozuvlar faqat qurilmada saqlanadi; server tasdiqlamaguncha rasmiy qoldiq o‘zgarmaydi.</small></form>
 <div className="panel"><h2>So‘nggi operatsiyalar</h2><input placeholder="Qidirish: ID, tur yoki xodim" value={historyFilter} onChange={e=>setHistoryFilter(e.target.value)}/>
@@ -244,6 +254,6 @@ function App(){
  {catalogKind==='dealers'&&<input aria-label="Viloyat" value={editCatalogValues.region||''} onChange={e=>setEditCatalogValues(v=>({...v,region:e.target.value}))}/>}
  <button type="button" className="ghost" disabled={busy} onClick={()=>void saveCatalogEdit()}>Saqlash</button>
  <button type="button" className="ghost" onClick={()=>setEditingCatalog(null)}>Bekor qilish</button></div>:x.stock!==undefined?String(x.stock)+' '+String(x.unit):x.receivable!==undefined?String(x.receivable)+' UZS':x.payable!==undefined?String(x.payable)+' UZS':x.balance!==undefined?String(x.balance)+' UZS':'—'}</td><td>{catalogKind!=='accounts'&&editingCatalog!==x.id&&<button type="button" className="ghost" onClick={()=>{setEditingCatalog(x.id);setEditCatalogValues({name:x.name,unit:String(x.unit||''),region:String(x.region||'')});}}>Tahrirlash</button>}</td></tr>)}</tbody></table></div></div>}
- </section></main>;
+ </div></section></main>;
 }
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);
