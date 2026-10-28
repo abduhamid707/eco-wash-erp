@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-const base='http://localhost:4000';
+const base=process.env.API_URL || 'http://localhost:4001';
 let token='';
 async function api(path,method='GET',data){
  const r=await fetch(base+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:data?JSON.stringify(data):undefined});

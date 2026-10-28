@@ -9,3 +9,6 @@ coverage/
 .DS_Store
 backups/
 *.dump
+playwright-report/
+test-results/
+*.tsbuildinfo

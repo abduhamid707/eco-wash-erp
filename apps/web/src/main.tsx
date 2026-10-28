@@ -15,12 +15,13 @@ type Snapshot={products:Item[];dealers:Item[];accounts:Item[];suppliers:Item[];o
 type CommandType='ACCOUNT_OPENING'|'INVENTORY_ADJUSTMENT'|'VOID_OPERATION'|'DEALER_RETURN'|'SUPPLIER_RECEIPT'|'SUPPLIER_RETURN'|'SUPPLIER_PAYMENT'|'DEALER_OPENING'|'SUPPLIER_OPENING'|'STOCK_RECEIPT'|'PRODUCTION'|'SHIPMENT'|'DEALER_PAYMENT'|'EXPENSE'|'CASH_RECEIPT'|'ACCOUNT_TRANSFER';
 const labels:Record<CommandType,string>={ACCOUNT_OPENING:'Boshlang‘ich kassa qoldig‘i (rahbar)',INVENTORY_ADJUSTMENT:'Inventarizatsiya (rahbar)',VOID_OPERATION:'Operatsiyani bekor qilish (rahbar)',DEALER_RETURN:'Diler qaytargan mahsulot',SUPPLIER_RECEIPT:'Yetkazib beruvchidan xomashyo',SUPPLIER_RETURN:'Yetkazib beruvchiga qaytarish',SUPPLIER_PAYMENT:'Yetkazib beruvchiga to‘lov',DEALER_OPENING:'Diler boshlang‘ich qarzi',SUPPLIER_OPENING:'Yetkazib beruvchi boshlang‘ich qarzi',STOCK_RECEIPT:'Xomashyo / mahsulot kirimi',PRODUCTION:'Ishlab chiqarish',SHIPMENT:'Dilerga jo‘natma',DEALER_PAYMENT:'Diler to‘lovi',EXPENSE:'Xarajat',CASH_RECEIPT:'Pul kirimi',ACCOUNT_TRANSFER:'Hisoblararo o‘tkazma'};
 function App(){
- const [token,setToken]=useState(sessionStorage.getItem('eco_token')||'');
- const [userId,setUserId]=useState(sessionStorage.getItem('eco_user_id')||'');
- const [role,setRole]=useState(sessionStorage.getItem('eco_role')||'');
+ const [rememberMe,setRememberMe]=useState(localStorage.getItem('eco_remember')==='true');
+ const [token,setToken]=useState(sessionStorage.getItem('eco_token')||localStorage.getItem('eco_token')||'');
+ const [userId,setUserId]=useState(sessionStorage.getItem('eco_user_id')||localStorage.getItem('eco_user_id')||'');
+ const [role,setRole]=useState(sessionStorage.getItem('eco_role')||localStorage.getItem('eco_role')||'');
  const canFinance=role==='OWNER'||role==='MANAGER';
  const isOwner=role==='OWNER';
- const [login,setLogin]=useState(''),[password,setPassword]=useState('');
+ const [login,setLogin]=useState(localStorage.getItem('eco_saved_login')||''),[password,setPassword]=useState('');
  const [showPassword,setShowPassword]=useState(false);
  const [openGroup,setOpenGroup]=useState('');
  const [error,setError]=useState(''),[busy,setBusy]=useState(false);
@@ -46,7 +47,7 @@ function App(){
  const api=async(path:string,method='GET',payload?:unknown)=>{
   const response=await fetch('/api'+path,{method,headers:{'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:payload?JSON.stringify(payload):undefined});
   const json=await response.json();
-  if(response.status===401){sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_role');sessionStorage.removeItem('eco_user_id');setToken('');setRole('');setUserId('');throw new Error('Sessiya tugagan. Qayta kiring.');}
+  if(response.status===401){sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_role');sessionStorage.removeItem('eco_user_id');localStorage.removeItem('eco_token');localStorage.removeItem('eco_role');localStorage.removeItem('eco_user_id');setToken('');setRole('');setUserId('');throw new Error('Sessiya tugagan. Qayta kiring.');}
   if(!response.ok)throw new Error(json.error||'So‘rov bajarilmadi');
   return json;
  };
@@ -72,7 +73,34 @@ function App(){
  }
  async function signIn(e:React.FormEvent){
   e.preventDefault();setBusy(true);setError('');
-  try{const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password})});const json=await response.json();if(!response.ok)throw Error('Login yoki parol xato');sessionStorage.setItem('eco_token',json.token);sessionStorage.setItem('eco_user_id',json.user.id);setUserId(json.user.id);sessionStorage.setItem('eco_role',json.user.role);setRole(json.user.role);setToken(json.token);setPassword('');}catch(e){setError(String(e));}finally{setBusy(false);}
+  try{
+   const response=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({login,password,rememberMe})});
+   const json=await response.json();
+   if(!response.ok){
+    if(response.status===429)throw Error('Juda ko‘p urinish bo‘ldi. Iltimos, birozdan so‘ng qayta urinib ko‘ring.');
+    throw Error(json.error==='INVALID_CREDENTIALS'?'Login yoki parol xato':(json.message||'Login yoki parol xato'));
+   }
+   sessionStorage.setItem('eco_token',json.token);
+   sessionStorage.setItem('eco_user_id',json.user.id);
+   sessionStorage.setItem('eco_role',json.user.role);
+   if(rememberMe){
+    localStorage.setItem('eco_remember','true');
+    localStorage.setItem('eco_token',json.token);
+    localStorage.setItem('eco_user_id',json.user.id);
+    localStorage.setItem('eco_role',json.user.role);
+    localStorage.setItem('eco_saved_login',login);
+   }else{
+    localStorage.removeItem('eco_remember');
+    localStorage.removeItem('eco_token');
+    localStorage.removeItem('eco_user_id');
+    localStorage.removeItem('eco_role');
+    localStorage.removeItem('eco_saved_login');
+   }
+   setUserId(json.user.id);
+   setRole(json.user.role);
+   setToken(json.token);
+   setPassword('');
+  }catch(e){setError(String(e));}finally{setBusy(false);}
  }
  const fields:Record<CommandType,Array<[string,string,string]>>={ACCOUNT_OPENING:[['accountId','Pul hisobi','accounts'],['amount','Tasdiqlangan boshlang‘ich qoldiq','number']],INVENTORY_ADJUSTMENT:[['productId','Mahsulot / xomashyo','products'],['actualQuantity','Sanab chiqilgan haqiqiy qoldiq','nonnegative'],['reason','Farq sababi','text']],
   VOID_OPERATION:[['targetId','Bekor qilinadigan operatsiya ID','text']],
@@ -149,6 +177,12 @@ function App(){
     <form className="auth-form" onSubmit={signIn}>
      <label htmlFor="eco-login">Login</label><div className="auth-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0116 0v2"/></svg><input id="eco-login" name="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="Loginingizni kiriting" autoComplete="username" autoCapitalize="none" spellCheck={false} required disabled={busy}/></div>
      <div className="auth-password-title"><label htmlFor="eco-password">Parol</label></div><div className="auth-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><input id="eco-password" name="password" type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Parolingizni kiriting" autoComplete="current-password" required disabled={busy}/><button className="auth-eye" type="button" disabled={busy} onClick={()=>setShowPassword(x=>!x)} aria-label={showPassword?'Parolni yashirish':'Parolni ko‘rsatish'} title={showPassword?'Yashirish':'Ko‘rsatish'}>{showPassword?<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 5.3A11 11 0 0112 5c5 0 9 7 9 7a15 15 0 01-3.2 3.6M6.7 6.7C4.4 8.3 3 12 3 12s4 7 9 7c1.2 0 2.4-.4 3.5-1"/></svg>:<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>}</button></div>
+     <div className="auth-options">
+      <label className="auth-remember" htmlFor="eco-remember">
+       <input id="eco-remember" type="checkbox" checked={rememberMe} onChange={e=>setRememberMe(e.target.checked)}/>
+       <span>Meni eslab qol</span>
+      </label>
+     </div>
      {error&&<div className="auth-error" role="alert"><span aria-hidden="true">!</span>{error}</div>}
      <button className="auth-submit" disabled={busy} type="submit">{busy?<><span className="auth-spinner" aria-hidden="true"/> Tekshirilmoqda...</>:<>Tizimga kirish <span aria-hidden="true">→</span></>}</button>
     </form>
@@ -187,11 +221,11 @@ function App(){
  <button className={tab==='import'?'selected':''} onClick={()=>setTab('import')}>Excel import</button>
  <button className={tab==='users'?'selected':''} onClick={()=>setTab('users')}>Foydalanuvchilar</button>
  </div>}</>}
- </nav><button className="logout" onClick={()=>{sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_user_id');sessionStorage.removeItem('eco_role');setRole('');setUserId('');setToken('');setData(null);setTab('dashboard');}}>Chiqish</button></aside><section className="content"><div className="top"><div><p className="eyebrow">ECO WASH / ISH PANELI</p><h1>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Ishchilar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excelni ko‘chirish':tab==='users'?'Xodimlar kirishi':tab==='statements'?'Qarz tafsiloti':tab==='pending'?'Offline navbat':'Ma’lumotnomalar'}</h1></div><div className="topactions"><span className={isOnline?"connection-pill online":"connection-pill offline"} role="status">{isOnline?"● Online":"● Offline"}</span><button className="ghost" onClick={()=>void refresh()}>↻ Yangilash</button>{canFinance&&<button className="ghost" onClick={()=>void downloadExcel()}>↓ Excel</button>}<button className="ghost" disabled={!pending||syncing} onClick={()=>void syncPending()}>↥ Sinxronlash ({pending})</button></div></div>{error&&<div className="notice error">{error}</div>}{message&&<div className="notice success">{message}</div>}
+ </nav><button className="logout" onClick={()=>{sessionStorage.removeItem('eco_token');sessionStorage.removeItem('eco_user_id');sessionStorage.removeItem('eco_role');localStorage.removeItem('eco_token');localStorage.removeItem('eco_user_id');localStorage.removeItem('eco_role');setRole('');setUserId('');setToken('');setData(null);setTab('dashboard');}}>Chiqish</button></aside><section className="content"><div className="top"><div><p className="eyebrow">ECO WASH / ISH PANELI</p><h1>{tab==='dashboard'?'Bosh sahifa':tab==='operations'?'Yangi operatsiya':tab==='staff'?'Ishchilar':tab==='recipes'?'Retseptlar':tab==='reports'?'Hisobotlar':tab==='import'?'Excelni ko‘chirish':tab==='users'?'Xodimlar kirishi':tab==='statements'?'Qarz tafsiloti':tab==='pending'?'Offline navbat':'Ma’lumotnomalar'}</h1></div><div className="topactions"><span className={isOnline?"connection-pill online":"connection-pill offline"} role="status">{isOnline?"● Online":"● Offline"}</span><button className="ghost" onClick={()=>void refresh()}>↻ Yangilash</button>{canFinance&&<button className="ghost" onClick={()=>void downloadExcel()}>↓ Excel</button>}<button className="ghost" disabled={!pending||syncing} onClick={()=>void syncPending()}>↥ Sinxronlash ({pending})</button></div></div>{error&&<div className="notice error">{error}</div>}{message&&<div className="notice success">{message}</div>}
  {tab==='dashboard'&&<><AnalyticsPanel api={api} enabled={canFinance}/><div className="stats"><article><small>Ombor pozitsiyalari</small><strong>{data?.products.length??'—'}</strong></article><article><small>Dilerlar</small><strong>{data?.dealers.length??'—'}</strong></article><article><small>Jami diler qarzi (UZS)</small><strong>{n(data?.dealers.reduce((a,b)=>a+Number(b.receivable),0))}</strong></article><article><small>Operatsiyalar</small><strong>{data?.operationCount??'—'}</strong></article></div><div className="columns"><div className="panel"><h2>Ombor qoldig‘i</h2><table><thead><tr><th>Mahsulot</th><th>Qoldiq</th></tr></thead><tbody>{data?.products.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.stock)} {String(x.unit)}</td></tr>)}</tbody></table></div><div className="panel"><h2>Diler qarzlari</h2><table><thead><tr><th>Diler</th><th>Qarz</th></tr></thead><tbody>{data?.dealers.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.receivable)}</td></tr>)}</tbody></table><h2>Pul hisoblari</h2><table><tbody>{data?.accounts.map(x=><tr key={x.id}><td>{x.name}</td><td>{n(x.balance)} UZS</td></tr>)}</tbody></table></div></div></>}
  {tab==='operations'&&<div className="columns"><form className="panel form" onSubmit={saveOperation}><h2>Operatsiyani kiritish</h2><label>Amal turi<select value={kind} onChange={e=>{setKind(e.target.value as CommandType);setValues({});}}>{Object.entries(labels).filter(([k])=>role==='OWNER'||(role==='WAREHOUSE'?k==='STOCK_RECEIPT':!['VOID_OPERATION','DEALER_OPENING','SUPPLIER_OPENING','INVENTORY_ADJUSTMENT','ACCOUNT_OPENING'].includes(k))).map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>{fields[kind].map(([key,title,type])=><label key={key}>{title}{['products','dealers','accounts','suppliers','recipes'].includes(type)?<select required value={values[key]||''} onChange={e=>set(key,e.target.value)}><option value="">Tanlang</option>{(type==='recipes'?recipes:((data?.[type as keyof Snapshot]||[]) as Item[])).map(x=><option value={x.id} key={x.id}>{x.name}</option>)}</select>:['targetId','shipmentId','purchaseId'].includes(key)?<><select required value={values[key]||''} onChange={e=>set(key,e.target.value)}><option value="">Oxirgi operatsiyalardan tanlang</option>{history.filter(op=>key==='shipmentId'?op.type==='SHIPMENT'&&op.status==='POSTED':key==='purchaseId'?op.type==='SUPPLIER_RECEIPT'&&op.status==='POSTED':op.status==='POSTED').map(op=><option key={op.id} value={op.id}>{labels[op.type as CommandType]||op.type} — {new Date(op.createdAt).toLocaleDateString('uz-UZ')} — {op.id.slice(0,8)}</option>)}</select><small className="muted">Eski operatsiya ro‘yxatda bo‘lmasa, uning ID sini kiriting</small><input value={values[key]||''} onChange={e=>set(key,e.target.value)} placeholder="Operatsiya ID (UUID)"/></>:<input type={type==='nonnegative'?'number':type} min={type==='nonnegative'?'0':type==='number'?'0.0001':undefined} step={type==='number'||type==='nonnegative'?'any':undefined} required={!['unitCost','description'].includes(key)} value={values[key]||''} onChange={e=>set(key,e.target.value)}/>}</label>)}<button disabled={busy}>{busy?'Saqlanmoqda...':'Serverga saqlash'}</button><small className="muted">Offline yozuvlar faqat qurilmada saqlanadi; server tasdiqlamaguncha rasmiy qoldiq o‘zgarmaydi.</small></form>
 <div className="panel"><h2>So‘nggi operatsiyalar</h2><input placeholder="Qidirish: ID, tur yoki xodim" value={historyFilter} onChange={e=>setHistoryFilter(e.target.value)}/>
-{history.filter(x=>[x.id,x.type,x.createdBy?.name||''].join(' ').toLowerCase().includes(historyFilter.toLowerCase())).map(x=><div className="history" key={x.id} style={{display:'block'}}>
+{history.filter(x=>[x.id,x.type,labels[x.type as CommandType]||'',x.createdBy?.name||''].join(' ').toLowerCase().includes(historyFilter.toLowerCase())).map(x=><div className="history" key={x.id} style={{display:'block'}}>
 <button type="button" className="ghost" style={{width:'100%',display:'flex',justifyContent:'space-between',textAlign:'left'}} onClick={()=>setSelectedOperation(p=>p===x.id?'':x.id)}>
 <span><b>{labels[x.type as CommandType]||x.type}</b><small style={{display:'block'}}>{x.createdBy?.name||'Xodim'} — {new Date(x.createdAt).toLocaleString('uz-UZ')}</small></span><span>{x.status==='REVERSED'?'Bekor qilingan':'Tasdiqlangan'} {selectedOperation===x.id?'⌃':'⌄'}</span>
 </button>

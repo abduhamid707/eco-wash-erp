@@ -59,12 +59,15 @@ const cmd = z.discriminatedUnion('type', [
 const commandBody = z.object({ idempotencyKey: id, command: cmd });
 const dec = (x: string | Prisma.Decimal) => new Prisma.Decimal(x);
 const insufficient = (s: string): never => { throw Object.assign(new Error(s), { statusCode: 409 }); };
+app.get('/', async () => ({ status: 'ok', service: 'eco-wash-api' }));
 app.get('/health', async () => ({ status: 'ok', service: 'eco-wash-api' }));
-app.post('/auth/login', {config:{rateLimit:{max:8,timeWindow:'1 minute'}}}, async (req, reply) => {
- const b = z.object({ login: z.string().min(1), password: z.string().min(1) }).parse(req.body);
+const loginRateLimit = process.env.RATE_LIMIT_LOGIN_MAX ? Number(process.env.RATE_LIMIT_LOGIN_MAX) : 100;
+app.post('/auth/login', {config:{rateLimit:{max: loginRateLimit, timeWindow:'1 minute'}}}, async (req, reply) => {
+ const b = z.object({ login: z.string().min(1), password: z.string().min(1), rememberMe: z.boolean().optional() }).parse(req.body);
  const user = await prisma.user.findUnique({ where: { login: b.login } });
  if (!user?.active || !(await bcrypt.compare(b.password,user.passwordHash))) return reply.code(401).send({ error: 'INVALID_CREDENTIALS' });
- return { token: app.jwt.sign({ id:user.id, role:user.role }), user: {id:user.id,name:user.name,role:user.role} };
+ const expiresIn = b.rememberMe ? '30d' : '8h';
+ return { token: app.jwt.sign({ id:user.id, role:user.role }, { expiresIn }), user: {id:user.id,name:user.name,role:user.role} };
 });
 
 app.get('/users', {preHandler:gate(['OWNER'])}, async()=>prisma.user.findMany({

@@ -5,9 +5,9 @@ test.describe('authorized user journeys',()=>{
  test.skip(!login||!password,'Set E2E_LOGIN and E2E_PASSWORD for authenticated tests');
  test.beforeEach(async({page})=>{
   await page.goto('/');
-  await page.getByLabel('Login').fill(login!);
-  await page.getByLabel('Parol').fill(password!);
-  await page.getByRole('button',{name:'Kirish'}).click();
+  await page.getByLabel('Login', {exact: true}).fill(login!);
+  await page.getByLabel('Parol', {exact: true}).fill(password!);
+  await page.getByRole('button',{name:/Tizimga kirish|Kirish/}).click();
   await expect(page.getByText('Bosh sahifa').first()).toBeVisible();
  });
  test('dashboard can navigate without lost session',async({page})=>{
