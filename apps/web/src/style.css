@@ -17,7 +17,7 @@ textarea{font:inherit;width:100%;padding:12px;border:1px solid #cadbdd;border-ra
 
 /* ECO WASH premium photo-backed authentication */
 .auth-shell{position:relative;isolation:isolate;min-height:100vh;min-height:100dvh;overflow:hidden;background:#082c34;color:#102e36}
-.auth-photo{position:absolute;inset:0;z-index:-2;background-image:url('https://commons.wikimedia.org/wiki/Special:FilePath/Industrial_Manufacturing.jpg?width=1920');background-position:center 45%;background-size:cover;background-repeat:no-repeat;filter:saturate(.68)}
+.auth-photo{position:absolute;inset:0;z-index:-2;background-image:url('/eco-wash-login-background.webp');background-position:center 45%;background-size:cover;background-repeat:no-repeat;filter:saturate(.68)}
 .auth-wash{position:absolute;inset:0;z-index:-1;background:linear-gradient(110deg,rgba(3,28,36,.92) 0%,rgba(5,35,44,.83) 38%,rgba(5,33,40,.52) 100%),radial-gradient(ellipse at 18% 65%,rgba(8,135,120,.31),transparent 58%)}
 .auth-wrap{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(460px,.92fr);width:min(1370px,calc(100% - 88px));min-height:100vh;min-height:100dvh;margin:auto;padding:42px 0;align-items:stretch}
 .auth-story{color:#fff;display:flex;flex-direction:column;min-height:660px;padding:18px 65px 20px 10px}
