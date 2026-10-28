@@ -134,7 +134,29 @@ function App(){
   dealers:[['name','Diler'],['region','Viloyat']],accounts:[['name','Hisob nomi']]
  };
  const n=(v:unknown)=>Number(v||0).toLocaleString('en-US',{maximumFractionDigits:2});
- if(!token)return <main className="login-page"><form className="login" onSubmit={signIn}><div className="logo">ECO WASH <span>ERP</span></div><h2>Tizimga kirish</h2><p>Korxona boshqaruvi</p><label>Login<input value={login} onChange={e=>setLogin(e.target.value)} autoComplete="username" required/></label><label>Parol<input type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} autoComplete="current-password" required/><button type="button" className="ghost" onClick={()=>setShowPassword(x=>!x)}>{showPassword?'Yashirish':'Parolni ko‘rsatish'}</button></label>{error&&<p className="error">{error}</p>}<button disabled={busy}>Kirish</button></form></main>;
+ if(!token)return <main className="auth-shell">
+  <div className="auth-photo" aria-hidden="true"/>
+  <div className="auth-wash" aria-hidden="true"/>
+  <div className="auth-wrap">
+   <section className="auth-story" aria-label="ECO WASH ERP">
+    <div className="auth-brand"><div className="auth-brand-icon"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 3C13 8 6 15 6 21a10 10 0 0020 0C26 15 19 8 16 3z" stroke="currentColor" strokeWidth="2.5"/><path d="M11 22c1 3 3 4 6 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"/></svg></div><div><strong>ECO WASH</strong><small>ENTERPRISE RESOURCE PLANNING</small></div></div>
+    <div className="auth-story-copy"><div className="auth-eyebrow"><span/> YAGONA BOSHQARUV PLATFORMASI</div><h1>Korxonangiz.<br/><em>To‘liq nazoratda.</em></h1><p>Ishlab chiqarishdan omborgacha, savdodan moliyagacha — barcha jarayonlar bitta tizimda.</p><div className="auth-story-line"/><div className="auth-features"><span>Ombor nazorati</span><span>Ishlab chiqarish</span><span>Moliyaviy hisobotlar</span></div></div>
+    <div className="auth-photo-caption">ECO WASH · FACTORY MANAGEMENT SYSTEM</div>
+   </section>
+   <section className="auth-panel">
+    <div className="auth-panel-top"><span className="auth-secure"><span/> Xavfsiz kirish</span><span className="auth-edition">ERP · ADMIN PANEL</span></div>
+    <div className="auth-form-wrap"><div className="auth-mobile-brand">ECO WASH <span>ERP</span></div><div className="auth-kicker">XUSH KELIBSIZ</div><h2>Tizimga kirish</h2><p className="auth-description">Hisobingizga kirib, ish jarayonlarini davom ettiring.</p>
+    <form className="auth-form" onSubmit={signIn}>
+     <label htmlFor="eco-login">Login</label><div className="auth-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-2a8 8 0 0116 0v2"/></svg><input id="eco-login" name="username" value={login} onChange={e=>setLogin(e.target.value)} placeholder="Loginingizni kiriting" autoComplete="username" autoCapitalize="none" spellCheck={false} required disabled={busy}/></div>
+     <div className="auth-password-title"><label htmlFor="eco-password">Parol</label></div><div className="auth-input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 018 0v3"/></svg><input id="eco-password" name="password" type={showPassword?'text':'password'} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Parolingizni kiriting" autoComplete="current-password" required disabled={busy}/><button className="auth-eye" type="button" disabled={busy} onClick={()=>setShowPassword(x=>!x)} aria-label={showPassword?'Parolni yashirish':'Parolni ko‘rsatish'} title={showPassword?'Yashirish':'Ko‘rsatish'}>{showPassword?<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 002.8 2.8"/><path d="M9.9 5.3A11 11 0 0112 5c5 0 9 7 9 7a15 15 0 01-3.2 3.6M6.7 6.7C4.4 8.3 3 12 3 12s4 7 9 7c1.2 0 2.4-.4 3.5-1"/></svg>:<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>}</button></div>
+     {error&&<div className="auth-error" role="alert"><span aria-hidden="true">!</span>{error}</div>}
+     <button className="auth-submit" disabled={busy} type="submit">{busy?<><span className="auth-spinner" aria-hidden="true"/> Tekshirilmoqda...</>:<>Tizimga kirish <span aria-hidden="true">→</span></>}</button>
+    </form>
+    <p className="auth-help">Kirish ma’lumotlari bo‘lmasa, tizim administratoriga murojaat qiling.</p></div>
+    <div className="auth-panel-bottom"><span>© ECO WASH · Boshqaruv tizimi</span><span>Himoyalangan ish muhiti</span></div>
+   </section>
+  </div>
+ </main>;
  return <main className="app"><aside><div className="logo">ECO WASH <span>ERP</span></div><p>Korxona boshqaruvi</p><nav className="erp-nav">
  <button className={tab==='dashboard'?'selected':''} onClick={()=>setTab('dashboard')}>◫ Bosh sahifa</button>
  <button className={tab==='pending'?'selected':''} onClick={()=>setTab('pending')}>↥ Offline navbat ({pending})</button>
