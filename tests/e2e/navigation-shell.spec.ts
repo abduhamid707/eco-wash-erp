@@ -5,9 +5,9 @@ test.describe('ECO WASH responsive shell',()=>{
  test.skip(!login||!password,'E2E_LOGIN and E2E_PASSWORD required');
  test.beforeEach(async({page})=>{
   await page.goto('/');
-  await page.getByLabel('Login').fill(login!);
-  await page.getByLabel('Parol').fill(password!);
-  await page.getByRole('button',{name:'Tizimga kirish'}).click();
+  await page.getByLabel('Login', {exact: true}).fill(login!);
+  await page.getByLabel('Parol', {exact: true}).fill(password!);
+  await page.getByRole('button',{name:/Tizimga kirish|Kirish/}).click();
   await expect(page.locator('.eco-header')).toBeVisible();
  });
  test('desktop navigation and breadcrumbs',async({page,isMobile})=>{

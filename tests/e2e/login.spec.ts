@@ -17,7 +17,7 @@ test('unauthorized API does not expose financial dashboard', async({request})=>{
  expect([401,403]).toContain(response.status());
 });
 
-test('remember me stores token and login in localStorage across reloads', async({page})=>{
+test('remember me stores token and login in localStorage across reloads', async({page,isMobile})=>{
  const login=process.env.E2E_LOGIN;
  const password=process.env.E2E_PASSWORD;
  test.skip(!login||!password,'Set E2E_LOGIN and E2E_PASSWORD for remember me persistence test');
@@ -44,7 +44,10 @@ test('remember me stores token and login in localStorage across reloads', async(
  expect(storage.sessionToken).toBeTruthy();
 
  // Logout should clear token from both storages, but keep savedLogin and remember
- await page.getByRole('button',{name:'Chiqish'}).click();
+ if(isMobile){
+  await page.getByRole('button',{name:'Menyuni ochish'}).click();
+ }
+ await page.getByRole('button',{name:/Tizimdan chiqish|Chiqish/}).click();
  await expect(page.getByRole('heading', {name: 'Tizimga kirish'})).toBeVisible();
 
  const storageAfterLogout = await page.evaluate(()=>{

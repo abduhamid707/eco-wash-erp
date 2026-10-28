@@ -10,20 +10,24 @@ test.describe('authorized user journeys',()=>{
   await page.getByRole('button',{name:/Tizimga kirish|Kirish/}).click();
   await expect(page.getByText('Bosh sahifa').first()).toBeVisible();
  });
- test('dashboard can navigate without lost session',async({page})=>{
+ test('dashboard can navigate without lost session',async({page,isMobile})=>{
+  if(isMobile)await page.getByRole('button',{name:'Menyuni ochish'}).click();
   await page.getByRole('button',{name:/Ombor va ishlab chiqarish/}).click();
-  await page.getByRole('button',{name:'Mahsulotlar va xomashyo'}).click();
-  await expect(page.getByText('Ma’lumotnomalar',{exact:true})).toBeVisible();
+  await page.getByRole('button',{name:/Mahsulot(lar)? va xomashyo/}).click();
+  await expect(page.getByRole('heading', { name: 'Ma’lumotnomalar' })).toBeVisible();
+  if(isMobile)await page.getByRole('button',{name:'Menyuni ochish'}).click();
   await page.getByRole('button',{name:'Bosh sahifa'}).click();
   await expect(page.getByText('Ombor qoldig‘i')).toBeVisible();
  });
- test('operation form enforces product selection',async({page})=>{
+ test('operation form enforces product selection',async({page,isMobile})=>{
+  if(isMobile)await page.getByRole('button',{name:'Menyuni ochish'}).click();
   await page.getByRole('button',{name:/Ombor va ishlab chiqarish/}).click();
   await page.getByRole('button',{name:'Kirim va chiqim'}).click();
   await expect(page.getByText('Operatsiyani kiritish')).toBeVisible();
   await expect(page.getByRole('button',{name:'Serverga saqlash'})).toBeVisible();
  });
- test('offline nav opens safely',async({page})=>{
+ test('offline nav opens safely',async({page,isMobile})=>{
+  if(isMobile)await page.getByRole('button',{name:'Menyuni ochish'}).click();
   await page.getByRole('button',{name:/Offline navbat/}).click();
   await expect(page.getByText('Internetga ulanishni kutayotgan amallar')).toBeVisible();
  });
