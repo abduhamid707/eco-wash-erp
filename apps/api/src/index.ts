@@ -14,7 +14,20 @@ const app = Fastify({ logger: true, bodyLimit: 1024 * 1024 });
 const port = z.coerce.number().int().min(1).max(65535).parse(process.env.PORT ?? 4000);
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 32) throw new Error('JWT_SECRET must be 32+ characters');
-await app.register(cors, { origin: process.env.WEB_ORIGIN ?? 'http://localhost:5173' });
+const webOrigin = process.env.WEB_ORIGIN ?? '*';
+await app.register(cors, {
+ origin: (origin, cb) => {
+  if (!origin || webOrigin === '*' || webOrigin === 'true') {
+   return cb(null, true);
+  }
+  const allowed = webOrigin.split(',').map(s => s.trim());
+  if (allowed.includes('*') || allowed.includes(origin) || origin.endsWith('.vercel.app')) {
+   return cb(null, true);
+  }
+  return cb(null, true);
+ },
+ credentials: true
+});
 await app.register(jwt, { secret: jwtSecret, sign: { expiresIn: '8h' } });
 await app.register(rateLimit,{global:false});
 await app.register(multipart,{limits:{fileSize:5*1024*1024,files:1}});

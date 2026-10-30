@@ -1,6 +1,7 @@
 # DEVELOPMENT/BETA ONLY. Uses Prisma db push, not production migrations.
 services:
   db:
+    container_name: eco-wash-db
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -15,6 +16,7 @@ services:
       timeout: 3s
       retries: 20
   api:
+    container_name: eco-wash-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -25,10 +27,13 @@ services:
     environment:
       DATABASE_URL: postgresql://eco:${POSTGRES_PASSWORD}@db:5432/eco_wash?schema=public
       JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET (32+ chars) in .env}
-      WEB_ORIGIN: http://localhost:8080
+      WEB_ORIGIN: ${WEB_ORIGIN:-*}
       PORT: 4000
-    command: ["sh","-c","pnpm --filter @eco/api exec prisma db push --skip-generate && pnpm --filter @eco/api start"]
+      BOOTSTRAP_LOGIN: ${BOOTSTRAP_LOGIN:-admin}
+      BOOTSTRAP_PASSWORD: ${BOOTSTRAP_PASSWORD:-Admin_EcoWash_2026!}
+    command: ["sh","-c","pnpm --filter @eco/api exec prisma db push --skip-generate && (pnpm --filter @eco/api bootstrap || true) && pnpm --filter @eco/api start"]
   web:
+    container_name: eco-wash-web
     build:
       context: .
       dockerfile: apps/web/Dockerfile
@@ -36,6 +41,6 @@ services:
       - api
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:80"
+      - "8080:80"
 volumes:
   eco_wash_pg:
